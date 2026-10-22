@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ricettario</title>
+  <meta name="description" content="Il tuo ricettario personale: salva ricette, gestisci dispensa e spesa, pianifica i pasti.">
+  <meta name="theme-color" content="#c2410c">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css">
+  <script>
+    // Applica il tema salvato prima del rendering per evitare lampeggi
+    try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <div class="app">
+    <nav class="nav" id="nav" aria-label="Navigazione principale">
+      <div class="nav-brand">
+        <img src="icons/icon.svg" alt="" width="32" height="32">
+        <span>Ricettario</span>
+      </div>
+      <a href="#/" data-nav="recipes"><span class="ico">📖</span><span class="lbl">Ricette</span></a>
+      <a href="#/pantry" data-nav="pantry"><span class="ico">🥫</span><span class="lbl">Dispensa</span></a>
+      <a href="#/shopping" data-nav="shopping"><span class="ico">🛒</span><span class="lbl">Spesa</span><span class="badge" id="shop-badge" hidden></span></a>
+      <a href="#/plan" data-nav="plan"><span class="ico">📅</span><span class="lbl">Menu</span></a>
+      <a href="#/settings" data-nav="settings"><span class="ico">⚙️</span><span class="lbl">Altro</span></a>
+      <div class="nav-foot">
+        <button class="sync-btn" id="sync-btn" title="Sincronizza con GitHub" data-action="sync">
+          <span class="sync-dot" id="sync-dot"></span><span id="sync-label">Locale</span>
+        </button>
+      </div>
+    </nav>
+    <main id="view" class="view" tabindex="-1"></main>
+  </div>
+  <div id="timers" class="timers" aria-live="polite"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="modal-root"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
