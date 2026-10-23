@@ -4,6 +4,7 @@ import { sync, isConfigured } from './github.js';
 import { recipesView, recipeView, editView, importView } from './views.js';
 import { pantryView, shoppingView, planView, settingsView } from './views-home.js';
 import { debounce, toast } from './utils.js';
+import { initServiceWorker } from './version.js';
 
 const viewEl = document.getElementById('view');
 let currentKey = '';
@@ -143,9 +144,7 @@ async function start() {
   setInterval(() => { if (document.visibilityState === 'visible' && (store.state.meta.dirty || Date.now() - (store.state.meta.lastSync || 0) > 300000)) autoSync(); }, 60000);
   autoSync();
 
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker non registrato', e));
-  }
+  initServiceWorker();
 }
 
 start();

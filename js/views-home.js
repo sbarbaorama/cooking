@@ -9,6 +9,7 @@ import { seasonInfo } from './season.js';
 import { thumb, hydrateImages, addToShopping, shoppingText, pickRecipe, openModal } from './ui.js';
 import { isConfigured, sync, testConnection, guessDevice } from './github.js';
 import { loadSamples } from './views.js';
+import { appVersion, checkForUpdate, forceUpdate } from './version.js';
 
 const fresh = (el) => { const n = el.cloneNode(false); el.replaceWith(n); return n; };
 const daysTo = (d) => (d ? Math.round((new Date(d + 'T00:00') - new Date(isoDate(new Date()) + 'T00:00')) / 86400000) : null);
@@ -606,8 +607,16 @@ export function settingsView(el) {
       <label class="field"><span>Proxy per scaricare le pagine ({url} viene sostituito con il link)</span><input type="text" id="proxy" value="${esc(s.proxy)}"></label>
     </div>
 
-    <div class="card stack">
+    <div class="card stack" id="ver-card">
       <h2>📱 App e aspetto</h2>
+      <div class="ver-box">
+        <div><span class="small muted">Versione installata</span><b id="ver-num">…</b></div>
+        <div class="row">
+          <button class="btn" data-act="ver-check">🔄 Controlla aggiornamenti</button>
+          <button class="btn ghost" data-act="ver-force" title="Riscarica l’app dal server">Forza aggiornamento</button>
+        </div>
+      </div>
+      <p class="small muted" style="margin:0">L’app si aggiorna da sola: quando pubblichi una versione nuova compare l’avviso <b>Aggiorna</b>. “Forza aggiornamento” riscarica tutti i file dell’app; ricette, spesa e impostazioni restano al loro posto.</p>
       ${standalone ? '<p class="small muted" style="margin:0">✓ Stai usando l’app installata.</p>' : `<div class="row"><button class="btn" data-act="install">⬇️ Installa l’app</button>
         <span class="small muted">Su Android: menu ⋮ di Chrome → “Installa app” / “Aggiungi a schermata Home”. Su PC: icona di installazione nella barra degli indirizzi.</span></div>`}
       <label class="field" style="max-width:260px"><span>Tema</span><select id="theme">
@@ -652,6 +661,8 @@ export function settingsView(el) {
   };
   const status = el.querySelector('#ghstatus');
   const redraw = () => settingsView(fresh(el));
+  appVersion().then((v) => { const n = el.querySelector('#ver-num'); if (n) n.textContent = v || 'non disponibile'; });
+  if (params.focus === 'ver') setTimeout(() => el.querySelector('#ver-card')?.scrollIntoView({ block: 'start' }), 50);
   if (params.focus === 'wa') setTimeout(() => { el.querySelector('#wa-card')?.scrollIntoView({ block: 'start' }); el.querySelector(wa.phone ? '#wa-phone' : '#wa-name')?.focus(); }, 50);
 
   el.querySelector('#proxy').addEventListener('change', (e) => store.saveSettings({ proxy: e.target.value.trim() || store.DEFAULT_SETTINGS.proxy }));
@@ -677,6 +688,17 @@ export function settingsView(el) {
   el.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-act]')?.dataset.act;
     if (!a) return;
+    if (a === 'ver-check') {
+      e.target.closest('button').disabled = true;
+      const r = await checkForUpdate();
+      e.target.closest('button').disabled = false;
+      toast(r === 'found' ? 'Nuova versione trovata: premi “Aggiorna” in basso' : r === 'offline' ? 'Sei offline: riprova con la connessione' : `Hai già l’ultima versione (${await appVersion() || '—'}) ✓`, 4000);
+      return;
+    }
+    if (a === 'ver-force') {
+      if (await confirmDialog('Riscaricare l’app dal server? Ricette, spesa e impostazioni non vengono toccate.', 'Aggiorna ora')) forceUpdate();
+      return;
+    }
     if (a === 'wa-save') {
       const phone = el.querySelector('#wa-phone').value.trim();
       const name = el.querySelector('#wa-name').value.trim();

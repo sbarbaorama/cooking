@@ -69,7 +69,7 @@ python -m http.server 8765
 
 e poi apri `http://localhost:8765`.
 
-Per pubblicare una nuova versione fai doppio clic su **`pubblica.bat`**: mostra i file modificati, chiede una descrizione (Invio per una automatica), aumenta `VERSION` in `sw.js` così i dispositivi aggiornano la cache offline, poi fa commit e push su GitHub. Puoi anche passare la descrizione da riga di comando: `pubblica.bat "Nuova grafica"`.
+Per pubblicare una nuova versione fai doppio clic su **`pubblica.bat`** (lancia `pubblica.ps1`): elenca i file cambiati, controlla che non contengano codici segreti, aumenta la versione in `sw.js` se è cambiato qualcosa dell'app, chiede una descrizione facoltativa e pubblica tutto in un solo commit (`Ricettario v5 - descrizione`). La descrizione si può passare anche da riga di comando: `pubblica.bat "Nuova grafica"`. La versione in uso è indicata in fondo alla barra laterale e in *Altro → App e aspetto*: le app aperte vedono l'avviso **Aggiorna** appena esce una versione nuova (controllano quando tornano in primo piano e ogni ora); da lì puoi anche **controllare subito** o **forzare l'aggiornamento**, che riscarica i file dell'app senza toccare i dati.
 
 ### Struttura
 
