@@ -1,9 +1,11 @@
 // Schermate: dispensa e suggerimenti, lista della spesa, menu settimanale, impostazioni
 import * as store from './store.js';
 import {
-  esc, toast, confirmDialog, isoDate, addDays, startOfWeek, DAY_NAMES, fmtDateTime, download, recipeEmoji, now,
+  esc, toast, confirmDialog, isoDate, addDays, startOfWeek, DAY_NAMES, fmtDateTime, download, recipeEmoji, now, WA_ICON, shareWhatsApp, refreshView, normPhone,
 } from './utils.js';
 import { suggest, tokens, aisleOf, AISLE_ORDER } from './match.js';
+import { parseIngredient } from './parser.js';
+import { seasonInfo } from './season.js';
 import { thumb, hydrateImages, addToShopping, shoppingText, pickRecipe, openModal } from './ui.js';
 import { isConfigured, sync, testConnection, guessDevice } from './github.js';
 import { loadSamples } from './views.js';
@@ -214,11 +216,47 @@ function staplesTab(tab) {
 
 // ===================== SPESA =====================
 const shopState = { group: true };
+const shopKey = (name) => tokens(name).join(' ');
+
+/** Prodotti suggeriti per l'aggiunta rapida: i più comprati, poi quelli comuni. */
+function quickItems(todo) {
+  const freq = store.state.data.prefs.shopFreq || {};
+  const inList = new Set(todo.map((i) => shopKey(i.name)));
+  const out = [], seen = new Set();
+  const names = [...Object.entries(freq).sort((a, b) => b[1] - a[1]).map((x) => x[0]), ...COMMON];
+  for (const n of names) {
+    const k = shopKey(n);
+    if (!k || inList.has(k) || seen.has(k)) continue;
+    seen.add(k); out.push(n);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+/** Ricorda quante volte si aggiunge a mano un prodotto (per i suggerimenti rapidi). */
+function countAdds(vals) {
+  const freq = { ...(store.state.data.prefs.shopFreq || {}) };
+  for (const v of vals) {
+    const p = parseIngredient(v);
+    const name = (p.name || v).toLowerCase().trim();
+    if (name && name.length < 40) freq[name] = (freq[name] || 0) + 1;
+  }
+  // Tiene solo i 60 più frequenti
+  store.setPrefs({ shopFreq: Object.fromEntries(Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 60)) });
+}
+
+/** Elimina elementi della lista con la possibilità di annullare. */
+function removeWithUndo(list, msg) {
+  const copies = list.map((i) => structuredClone(i));
+  store.removeMany('shopping', list.map((i) => i.id));
+  toast(msg, 5000, { label: 'Annulla', fn: () => { store.upsertMany('shopping', copies); refreshView(); } });
+}
 
 export function shoppingView(el) {
   const items = store.list('shopping');
   const todo = items.filter((i) => !i.checked);
   const done = items.filter((i) => i.checked);
+  const wa = store.state.settings.wa || {};
   const row = (it) => `<label class="shop-item ${it.checked ? 'checked' : ''}" data-id="${it.id}">
       <input type="checkbox" ${it.checked ? 'checked' : ''}>
       <span class="txt">${esc(shoppingText(it))}${it.recipes?.length ? `<span class="from">per ${esc(it.recipes.join(', '))}</span>` : ''}</span>
@@ -229,13 +267,22 @@ export function shoppingView(el) {
     for (const it of todo) (g[it.aisle || aisleOf(it.name)] ||= []).push(it);
     list = AISLE_ORDER.filter((a) => g[a]).map((a) => `<div class="shop-group"><h3>${esc(a)}</h3>${g[a].map(row).join('')}</div>`).join('');
   } else list = `<div class="shop-group">${todo.map(row).join('')}</div>`;
+  const quick = quickItems(todo);
 
   el.innerHTML = `
     <div class="page-head"><h1>Lista della spesa</h1>
       <button class="btn ${shopState.group ? 'on' : ''}" data-act="group" title="Raggruppa per reparto">🗂️ Reparti</button>
-      ${items.length ? '<button class="btn" data-act="share">📤 Condividi</button>' : ''}
     </div>
+    ${todo.length ? `<div class="shop-share">
+      <div class="txt"><b>Manda la lista</b>${todo.length} ${todo.length === 1 ? 'prodotto' : 'prodotti'} da comprare, ${shopState.group ? 'divisi per reparto' : 'in un unico elenco'}
+        ${wa.phone ? '' : '<br><a href="#/settings?focus=wa" class="small">Imposta un contatto preferito</a>'}</div>
+      <button class="btn wa" data-act="wa">${WA_ICON} ${wa.phone ? `A ${esc(wa.name || 'contatto preferito')}` : 'WhatsApp'}</button>
+      ${wa.phone ? `<button class="btn icon" data-act="wa-any" title="Scegli un altro contatto o un gruppo" aria-label="Invia a un altro contatto">${WA_ICON}<span class="plus">＋</span></button>` : ''}
+      <button class="btn icon" data-act="copy" title="Copia il testo" aria-label="Copia il testo">📋</button>
+      ${navigator.share ? '<button class="btn icon" data-act="share" title="Altre app" aria-label="Condividi con altre app">📤</button>' : ''}
+    </div>` : ''}
     <div class="card"><div class="add-row"><input type="text" id="add" placeholder="Aggiungi prodotto (es. 1 kg di farina)…" autocomplete="off"><button class="btn primary" data-act="add">Aggiungi</button></div>
+      ${quick.length ? `<div class="quick-row"><span class="small muted">Aggiungi al volo</span><div class="chips">${quick.map((n) => `<button class="chip quick" data-quick="${esc(n)}">＋ ${esc(n)}</button>`).join('')}</div></div>` : ''}
       <div class="row small mt"><button class="btn sm" data-act="fromplan">📅 Dal menu della settimana</button><button class="btn sm" data-act="fromrecipe">📖 Da una ricetta</button></div></div>
     ${todo.length ? list : `<div class="empty"><span class="big">🛒</span>${done.length ? 'Hai preso tutto! 🎉' : 'La lista è vuota.'}</div>`}
     ${done.length ? `<div class="section-title"><h2 class="muted" style="font-size:1rem">Nel carrello (${done.length})</h2>
@@ -249,6 +296,7 @@ export function shoppingView(el) {
     const vals = inp.value.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
     if (!vals.length) return;
     addToShopping(vals, { skipPantry: false });
+    countAdds(vals);
     redraw();
     setTimeout(() => document.getElementById('add')?.focus(), 30);
   };
@@ -262,34 +310,70 @@ export function shoppingView(el) {
   });
   el.addEventListener('click', async (e) => {
     const del = e.target.closest('[data-del]');
-    if (del) { e.preventDefault(); store.remove('shopping', del.closest('[data-id]').dataset.id); redraw(); return; }
+    if (del) {
+      e.preventDefault();
+      const it = store.get('shopping', del.closest('[data-id]').dataset.id);
+      removeWithUndo([it], `“${it.name}” rimosso`);
+      redraw();
+      return;
+    }
+    const q = e.target.closest('[data-quick]');
+    if (q) { addToShopping([q.dataset.quick], { skipPantry: false }); countAdds([q.dataset.quick]); toast(`${q.dataset.quick} aggiunto`); redraw(); return; }
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const a = b.dataset.act;
     if (a === 'add') add();
     else if (a === 'group') { shopState.group = !shopState.group; redraw(); }
-    else if (a === 'share') {
-      const text = 'Lista della spesa:\n' + todo.map((i) => '☐ ' + shoppingText(i)).join('\n');
-      if (navigator.share) { try { await navigator.share({ title: 'Lista della spesa', text }); return; } catch (err) { if (err.name === 'AbortError') return; } }
-      try { await navigator.clipboard.writeText(text); toast('Lista copiata negli appunti'); } catch { toast('Impossibile copiare'); }
-    } else if (a === 'cleardone') { store.removeMany('shopping', done.map((i) => i.id)); redraw(); }
-    else if (a === 'clearall') { if (await confirmDialog('Svuotare tutta la lista della spesa?', 'Svuota', true)) { store.removeMany('shopping', items.map((i) => i.id)); redraw(); } }
+    else if (a === 'wa') shareWhatsApp(shoppingMessage(todo), wa.phone);
+    else if (a === 'wa-any') shareWhatsApp(shoppingMessage(todo));
+    else if (a === 'copy') {
+      try { await navigator.clipboard.writeText(shoppingMessage(todo)); toast('Lista copiata negli appunti'); } catch { toast('Impossibile copiare'); }
+    } else if (a === 'share') {
+      const text = shoppingMessage(todo);
+      try { await navigator.share({ title: 'Lista della spesa', text }); } catch (err) {
+        if (err.name !== 'AbortError') { try { await navigator.clipboard.writeText(text); toast('Lista copiata negli appunti'); } catch { toast('Impossibile condividere'); } }
+      }
+    } else if (a === 'cleardone') { removeWithUndo(done, `${done.length} ${done.length === 1 ? 'prodotto eliminato' : 'prodotti eliminati'}`); redraw(); }
+    else if (a === 'clearall') { removeWithUndo(items, 'Lista svuotata'); redraw(); }
     else if (a === 'topantry') {
       const cur = store.list('pantry');
       const toAdd = [];
       for (const it of done) {
-        const k = tokens(it.name).join(' ');
-        if (k && !cur.some((p) => tokens(p.name).join(' ') === k) && !toAdd.some((p) => tokens(p.name).join(' ') === k)) toAdd.push({ name: it.name.toLowerCase(), expiry: null });
+        const k = shopKey(it.name);
+        if (k && !cur.some((p) => shopKey(p.name) === k) && !toAdd.some((p) => shopKey(p.name) === k)) toAdd.push({ name: it.name.toLowerCase(), expiry: null });
       }
       if (toAdd.length) store.upsertMany('pantry', toAdd);
+      const copies = done.map((i) => structuredClone(i));
       store.removeMany('shopping', done.map((i) => i.id));
-      toast(`${toAdd.length} prodotti aggiunti alla dispensa`);
+      toast(`${toAdd.length} prodotti aggiunti alla dispensa`, 5000, { label: 'Annulla', fn: () => {
+        if (toAdd.length) store.removeMany('pantry', toAdd.map((p) => p.id));
+        store.upsertMany('shopping', copies);
+        refreshView();
+      } });
       redraw();
     } else if (a === 'fromrecipe') {
       const res = await pickRecipe('Aggiungi ingredienti di…', { allowFree: false });
       if (res?.recipe) { const { added } = addToShopping(res.recipe.ingredients, { recipe: res.recipe }); toast(`${added} ingredienti aggiunti`); redraw(); }
     } else if (a === 'fromplan') { await shopFromWeek(startOfWeek(new Date())); redraw(); }
   });
+}
+
+const AISLE_EMOJI = {
+  'Frutta e verdura': '🥬', 'Carne e pesce': '🐟', 'Salumi e formaggi': '🧀', 'Latte, uova e frigo': '🥚', 'Pane e forno': '🥖',
+  'Pasta, riso e cereali': '🍝', 'Dispensa': '🫙', 'Bevande': '🍷', 'Surgelati': '❄️', 'Altro': '🧺',
+};
+
+/** Testo della lista per WhatsApp: grassetto per i reparti (*…*), una riga per prodotto. */
+function shoppingMessage(todo) {
+  const date = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+  const line = (i) => `▢ ${shoppingText(i)}`;
+  let body;
+  if (shopState.group) {
+    const g = {};
+    for (const it of todo) (g[it.aisle || aisleOf(it.name)] ||= []).push(it);
+    body = AISLE_ORDER.filter((a) => g[a]).map((a) => `${AISLE_EMOJI[a] || '•'} *${a}*\n${g[a].map(line).join('\n')}`).join('\n\n');
+  } else body = todo.map(line).join('\n');
+  return `🛒 *Lista della spesa*\n_${date}_\n\n${body}\n\n${todo.length} ${todo.length === 1 ? 'prodotto' : 'prodotti'} · dal Ricettario`;
 }
 
 async function shopFromWeek(weekStart) {
@@ -372,7 +456,7 @@ function autoFill(days, entries) {
   const used = new Set(entries.map((p) => p.recipeId));
   const today = isoDate(new Date());
   // Preferisci ricette ben votate e non cucinate di recente
-  const weight = (r) => 1 + (r.rating || 0) + (r.favorite ? 2 : 0) + Math.min(5, (now() - (r.lastCooked || 0)) / (86400000 * 14));
+  const weight = (r) => 1 + (r.rating || 0) + (r.favorite ? 2 : 0) + (seasonInfo(r).seasonal ? 3 : 0) + Math.min(5, (now() - (r.lastCooked || 0)) / (86400000 * 14));
   const pick = () => {
     const pool = recipes.filter((r) => !used.has(r.id));
     const src = pool.length ? pool : recipes;
@@ -416,8 +500,30 @@ export function planAddDialog(r) {
 let installEvt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; });
 
+/** Parametri dopo "?" nell'indirizzo (#/settings?setup=…). */
+function hashParams() {
+  const h = location.hash, i = h.indexOf('?');
+  return Object.fromEntries(new URLSearchParams(i >= 0 ? h.slice(i + 1) : ''));
+}
+
+/** Link che apre l'app su un altro dispositivo con utente e repository già compilati (senza token). */
+function setupLink() {
+  const g = store.state.settings.gh;
+  const data = btoa(unescape(encodeURIComponent(JSON.stringify({ o: g.owner, r: g.repo, b: g.branch, p: g.path }))));
+  return location.origin + location.pathname + '#/settings?setup=' + encodeURIComponent(data);
+}
+
 export function settingsView(el) {
-  const s = store.state.settings, g = s.gh, meta = store.state.meta;
+  const s = store.state.settings, meta = store.state.meta;
+  const params = hashParams();
+  let g = s.gh, incoming = null;
+  if (params.setup) {
+    try {
+      const d = JSON.parse(decodeURIComponent(escape(atob(params.setup))));
+      if (d.o && d.r) { incoming = d; g = { ...s.gh, owner: d.o, repo: d.r, branch: d.b || 'main', path: d.p || 'ricettario.json' }; }
+    } catch { toast('Link di configurazione non valido'); }
+  }
+  const wa = s.wa || {};
   const recipes = store.list('recipes');
   const appUrl = location.origin + location.pathname;
   const bookmarklet = `javascript:(()=>{const L=[...document.querySelectorAll('script[type="application/ld+json"]')].map(s=>s.textContent).filter(t=>/Recipe/.test(t));const m=document.querySelector('meta[property="og:image"]');const sel=String(getSelection());const p={u:location.href,t:document.title,i:m?m.content:'',l:L,s:sel||(L.length?'':document.body.innerText.slice(0,12000))};window.open('${appUrl}#/import?bm='+encodeURIComponent(JSON.stringify(p)),'_blank')})()`;
@@ -426,6 +532,20 @@ export function settingsView(el) {
 
   el.innerHTML = `
     <div class="page-head"><h1>Altro</h1></div>
+    ${incoming ? `<div class="card mb" style="background:var(--sea-soft);border-color:transparent">👋 <b>Configurazione ricevuta</b> per il repository <code>${esc(incoming.o)}/${esc(incoming.r)}</code>.
+      Ho già compilato i campi qui sotto: incolla il <b>tuo token</b> GitHub (vedi “Come configurarla” più sotto) e premi <b>Salva</b>.</div>` : ''}
+
+    <div class="card stack" id="wa-card">
+      <h2>💬 WhatsApp</h2>
+      <p class="muted small" style="margin:0">Scegli a chi mandare di solito la lista della spesa: il pulsante WhatsApp aprirà direttamente la sua chat. Per mandarla a un gruppo o a qualcun altro resta disponibile il pulsante “altro contatto”.</p>
+      <div class="grid-form">
+        <label class="field"><span>Nome</span><input type="text" id="wa-name" value="${esc(wa.name || '')}" placeholder="Es. Marta"></label>
+        <label class="field"><span>Numero di telefono</span><input type="tel" id="wa-phone" value="${esc(wa.phone || '')}" placeholder="333 123 4567" inputmode="tel"></label>
+      </div>
+      <div class="row"><button class="btn primary" data-act="wa-save">Salva contatto</button>
+        ${wa.phone ? '<button class="btn" data-act="wa-test">Prova</button><button class="btn ghost danger" data-act="wa-clear">Rimuovi</button>' : ''}
+        <span class="small muted">Senza prefisso internazionale viene usato +39. Il contatto resta salvato solo su questo dispositivo.</span></div>
+    </div>
 
     <div class="card stack">
       <h2>☁️ Sincronizzazione con GitHub</h2>
@@ -459,6 +579,23 @@ export function settingsView(el) {
         </ol>
         <p>Il file è un normale JSON leggibile: GitHub conserva la cronologia di ogni modifica, quindi puoi sempre recuperare una versione precedente.</p>
       </details>
+    </div>
+
+    <div class="card stack">
+      <h2>👥 Lista condivisa in famiglia</h2>
+      <p class="small" style="margin:0">Se anche un’altra persona usa il Ricettario collegato allo <b>stesso repository</b>, ricette, dispensa, menu e lista della spesa restano allineati su entrambi i telefoni: quando uno spunta un prodotto al supermercato, l’altro lo vede dopo pochi secondi.</p>
+      ${isConfigured() ? `
+      <ol class="small" style="margin:0;padding-left:20px">
+        <li>Su GitHub, nel repository <code>${esc(s.gh.repo)}</code>, vai su <i>Settings → Collaborators</i> e invita l’account GitHub dell’altra persona (oppure usate lo stesso account).</li>
+        <li>L’altra persona crea il <b>suo</b> token fine-grained (stessi permessi: <i>Contents: Read and write</i> solo su quel repository). È meglio non condividere il tuo.</li>
+        <li>Mandale il link qui sotto: aprendolo, l’app si configura da sola e le chiede solo il token.</li>
+      </ol>
+      <div class="row">
+        <button class="btn wa" data-act="setup-wa">${WA_ICON} Invia il link su WhatsApp</button>
+        <button class="btn" data-act="setup-copy">🔗 Copia il link</button>
+      </div>
+      <p class="small muted" style="margin:0">Il link contiene solo utente e nome del repository, mai il token.</p>`
+      : '<p class="small muted" style="margin:0">Prima configura la sincronizzazione con GitHub qui sopra: poi qui troverai il link da mandare all’altra persona.</p>'}
     </div>
 
     <div class="card stack">
@@ -515,6 +652,7 @@ export function settingsView(el) {
   };
   const status = el.querySelector('#ghstatus');
   const redraw = () => settingsView(fresh(el));
+  if (params.focus === 'wa') setTimeout(() => { el.querySelector('#wa-card')?.scrollIntoView({ block: 'start' }); el.querySelector(wa.phone ? '#wa-phone' : '#wa-name')?.focus(); }, 50);
 
   el.querySelector('#proxy').addEventListener('change', (e) => store.saveSettings({ proxy: e.target.value.trim() || store.DEFAULT_SETTINGS.proxy }));
   el.querySelector('#theme').addEventListener('change', (e) => {
@@ -539,8 +677,22 @@ export function settingsView(el) {
   el.addEventListener('click', async (e) => {
     const a = e.target.closest('[data-act]')?.dataset.act;
     if (!a) return;
-    if (a === 'save') {
+    if (a === 'wa-save') {
+      const phone = el.querySelector('#wa-phone').value.trim();
+      const name = el.querySelector('#wa-name').value.trim();
+      if (phone && normPhone(phone).length < 8) { toast('Numero non valido'); return; }
+      await store.saveSettings({ wa: phone ? { phone, name } : {} });
+      toast(phone ? 'Contatto WhatsApp salvato' : 'Contatto rimosso');
+      redraw();
+    } else if (a === 'wa-clear') { await store.saveSettings({ wa: {} }); toast('Contatto rimosso'); redraw(); }
+    else if (a === 'wa-test') shareWhatsApp('Ciao! Da adesso ti mando la lista della spesa da qui 🛒', wa.phone);
+    else if (a === 'setup-wa' || a === 'setup-copy') {
+      const link = setupLink();
+      if (a === 'setup-wa') shareWhatsApp(`Ho collegato il Ricettario per condividere ricette e lista della spesa 🍝\nApri questo link e inserisci il tuo token GitHub:\n${link}`);
+      else { try { await navigator.clipboard.writeText(link); toast('Link copiato'); } catch { toast('Impossibile copiare'); } }
+    } else if (a === 'save') {
       await store.saveSettings(readForm());
+      if (params.setup) history.replaceState(null, '', location.pathname + location.search + '#/settings');
       toast('Impostazioni salvate');
       if (isConfigured()) { try { await sync(); toast('Sincronizzato ✓'); } catch (err) { toast(err.message, 5000); } }
       redraw();

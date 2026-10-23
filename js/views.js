@@ -1,6 +1,6 @@
 // Schermate delle ricette: elenco, dettaglio, modifica, importazione
 import * as store from './store.js';
-import { esc, toast, minToText, fmtDate, confirmDialog, recipeEmoji, debounce } from './utils.js';
+import { esc, toast, minToText, fmtDate, confirmDialog, recipeEmoji, debounce, shareWhatsApp } from './utils.js';
 import {
   parseIngredient, formatIngredient, isGroupHeader, blankRecipe, parseRecipeText, fetchRecipeFromUrl,
   recipeFromBookmarklet, recipeToText,
@@ -8,8 +8,9 @@ import {
 import { normText, tokens, ingredientName, prepareHave, findHave } from './match.js';
 import { imgTag, hydrateImages, storePhoto, addToShopping, stepHTML, cookMode, markCooked, openModal } from './ui.js';
 import { SAMPLE_RECIPES } from './samples.js';
+import { seasonInfo, monthName } from './season.js';
 
-const listState = { q: '', tag: '', cat: '', sort: 'recent', fav: false };
+const listState = { q: '', tag: '', cat: '', sort: 'recent', fav: false, season: false, open: false };
 let draft = null;
 export function setDraft(r) { draft = r; }
 
@@ -44,16 +45,23 @@ export function recipesView(el) {
       <h1>Le mie ricette <span class="muted small" id="count"></span></h1>
       <button class="btn" data-act="random" title="Una ricetta a caso">🎲 Ispirami</button>
     </div>
+    <div class="lib-filters ${listState.open ? 'open' : ''}" id="lib">
     <div class="toolbar">
       <div class="search"><input type="search" id="q" placeholder="Cerca per nome, ingrediente o tag…" value="${esc(listState.q)}" autocomplete="off"></div>
+      <button class="btn filter-toggle" id="ftoggle" aria-expanded="${listState.open}" aria-controls="fset">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>Filtri<span class="fcount" id="fcount"></span></button>
+      <div class="filter-set" id="fset">
       <select id="cat" aria-label="Categoria"><option value="">Tutte le categorie</option>${cats.map((c) => `<option ${c === listState.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
       <select id="sort" aria-label="Ordina">
         ${[['recent', 'Più recenti'], ['az', 'A → Z'], ['rating', 'Più votate'], ['cooked', 'Più cucinate'], ['time', 'Più veloci'], ['forgotten', 'Da riscoprire']]
           .map(([v, l]) => `<option value="${v}" ${v === listState.sort ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
       <button class="btn ${listState.fav ? 'on' : ''}" id="fav" title="Solo preferite">★ Preferite</button>
+      <button class="btn ${listState.season ? 'on' : ''}" id="season" title="Ricette con frutta e verdura di ${monthName()}">🌿 Di stagione</button>
+      </div>
     </div>
-    ${tags.length ? `<div class="chips" id="tags">${tags.map((t) => `<button class="chip ${t === listState.tag ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
+    ${tags.length ? `<div class="chips tag-row" id="tags">${tags.map((t) => `<button class="chip ${t === listState.tag ? 'on' : ''}" data-tag="${esc(t)}">#${esc(t)}</button>`).join('')}</div>` : ''}
+    </div>
     <div class="recipe-grid" id="grid"></div>
     <a class="fab" href="#/import" aria-label="Aggiungi ricetta" title="Aggiungi ricetta">＋</a>`;
 
@@ -64,6 +72,7 @@ export function recipesView(el) {
       if (listState.fav && !r.favorite) return false;
       if (listState.cat && r.category !== listState.cat) return false;
       if (listState.tag && !(r.tags || []).includes(listState.tag)) return false;
+      if (listState.season && !seasonInfo(r).seasonal) return false;
       if (q) {
         const hay = normText([r.title, r.category, r.cuisine, (r.tags || []).join(' '), r.ingredients.join(' ')].join(' '));
         return q.split(' ').every((w) => hay.includes(w));
@@ -79,6 +88,8 @@ export function recipesView(el) {
       forgotten: (a, b) => (a.lastCooked || 0) - (b.lastCooked || 0),
     };
     rs.sort(by[listState.sort] || by.recent);
+    const nf = [listState.cat, listState.tag, listState.fav, listState.season, listState.sort !== 'recent'].filter(Boolean).length;
+    el.querySelector('#fcount').textContent = nf ? nf : '';
     el.querySelector('#count').textContent = `(${rs.length}${rs.length !== all.length ? ' di ' + all.length : ''})`;
     grid.innerHTML = rs.length ? rs.map(card).join('') : '<div class="empty" style="grid-column:1/-1">Nessuna ricetta corrisponde ai filtri.</div>';
     hydrateImages(grid);
@@ -89,6 +100,15 @@ export function recipesView(el) {
   el.querySelector('#cat').onchange = (e) => { listState.cat = e.target.value; draw(); };
   el.querySelector('#sort').onchange = (e) => { listState.sort = e.target.value; draw(); };
   el.querySelector('#fav').onclick = (e) => { listState.fav = !listState.fav; e.currentTarget.classList.toggle('on', listState.fav); draw(); };
+  el.querySelector('#season').onclick = (e) => {
+    listState.season = !listState.season; e.currentTarget.classList.toggle('on', listState.season); draw();
+    if (listState.season && !all.some((r) => seasonInfo(r).seasonal)) toast(`Nessuna ricetta con frutta e verdura di ${monthName()}`);
+  };
+  el.querySelector('#ftoggle').onclick = (e) => {
+    listState.open = !listState.open;
+    el.querySelector('#lib').classList.toggle('open', listState.open);
+    e.currentTarget.setAttribute('aria-expanded', listState.open);
+  };
   el.querySelector('#tags')?.addEventListener('click', (e) => {
     const b = e.target.closest('[data-tag]');
     if (!b) return;
@@ -113,6 +133,7 @@ function card(r) {
         ${t ? `<span>⏱ ${minToText(t)}</span>` : ''}
         ${r.rating ? `<span>${'★'.repeat(r.rating)}</span>` : ''}
         ${r.category ? `<span>${esc(r.category)}</span>` : ''}
+        ${seasonInfo(r).seasonal ? '<span class="season" title="Di stagione">🌿</span>' : ''}
       </div>
     </div></a>`;
 }
@@ -134,6 +155,7 @@ export function recipeView(el, id) {
   const S = prepareHave(store.state.data.prefs.staples.map((name) => ({ name })));
   const H = prepareHave(store.list('pantry'));
   const t = totalTime(r);
+  const si = seasonInfo(r);
 
   const ingHTML = r.ingredients.map((line, i) => {
     const p = parseIngredient(line);
@@ -160,7 +182,8 @@ export function recipeView(el, id) {
       <button class="btn icon" data-act="more" aria-label="Altre azioni">⋯</button>
     </div>
     <div class="detail-hero">
-      <div class="photo">${esc(recipeEmoji(r))}${imgTag(r.image, r.title)}</div>
+      <div class="photo">${esc(recipeEmoji(r))}${imgTag(r.image, r.title)}
+        ${r.image ? '' : '<label class="photo-add no-print">📷 Aggiungi una foto<input type="file" accept="image/*" id="photo-in" hidden></label>'}</div>
       <div>
         <h1>${esc(r.title || 'Senza titolo')}</h1>
         <div class="row no-print">
@@ -178,6 +201,8 @@ export function recipeView(el, id) {
           ${r.calories ? `<div class="fact"><b>Calorie</b>${r.calories} kcal</div>` : ''}
         </div>
         ${(r.tags || []).length ? `<div class="chips">${r.tags.map((x) => `<span class="chip">#${esc(x)}</span>`).join('')}</div>` : ''}
+        ${si.inSeason.length ? `<p class="season-note ${si.seasonal ? '' : 'part'}">🌿 <b>${si.seasonal ? 'Di stagione' : 'In parte di stagione'}</b> a ${monthName()}: ${esc(si.inSeason.join(', '))}${si.outSeason.length ? `<br><span class="muted">Fuori stagione: ${esc(si.outSeason.join(', '))}</span>` : ''}</p>`
+          : si.outSeason.length ? `<p class="season-note part">🍂 Fuori stagione a ${monthName()}: ${esc(si.outSeason.join(', '))}</p>` : ''}
         <p class="small muted mt">
           ${r.cookedCount ? `Cucinata ${r.cookedCount} ${r.cookedCount === 1 ? 'volta' : 'volte'}, l’ultima il ${fmtDate(r.lastCooked)}.` : 'Non ancora cucinata.'}
           <button class="btn sm ghost no-print" data-act="cooked">✓ L’ho cucinata</button>
@@ -198,8 +223,22 @@ export function recipeView(el, id) {
         <ol class="steps">${stepsHTML || '<li class="muted">Nessun passaggio.</li>'}</ol>
         ${r.notes ? `<h2 class="mt">Note</h2><div class="notes">${esc(r.notes)}</div>` : ''}
       </section>
+    </div>
+    <div class="cook-bar no-print">
+      <button class="btn primary" data-act="cook" ${r.steps.length ? '' : 'disabled'}>👨‍🍳 Inizia a cucinare</button>
+      <button class="btn" data-act="shop">🛒 Alla spesa</button>
     </div>`;
   hydrateImages(el);
+  el.querySelector('#photo-in')?.addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      r.image = await storePhoto(f);
+      store.upsert('recipes', r);
+      toast('Foto aggiunta 📷');
+      rerender();
+    } catch (err) { console.error(err); toast('Impossibile leggere la foto'); }
+  });
 
   // Ridisegna su un contenitore nuovo, così i gestori di eventi non si accumulano
   const rerender = () => { const y = window.scrollY; const fresh = el.cloneNode(false); el.replaceWith(fresh); recipeView(fresh, id); window.scrollTo(0, y); };
@@ -227,6 +266,7 @@ async function moreMenu(r, factor) {
     <header><h2>${esc(r.title)}</h2><button class="btn ghost icon" data-close aria-label="Chiudi">✕</button></header>
     <div class="mbody"><ul class="pick-list">
       <li><button data-m="plan">📅 Aggiungi al menu della settimana</button></li>
+      <li><button data-m="wa">💬 Invia su WhatsApp</button></li>
       <li><button data-m="share">📤 Condividi / copia testo</button></li>
       <li><button data-m="print">🖨️ Stampa</button></li>
       <li><button data-m="dup">📄 Duplica</button></li>
@@ -237,7 +277,8 @@ async function moreMenu(r, factor) {
     if (!b) return;
     m.close();
     const act = b.dataset.m;
-    if (act === 'share') {
+    if (act === 'wa') shareWhatsApp(recipeToText(r));
+    else if (act === 'share') {
       const text = recipeToText(r);
       if (navigator.share) { try { await navigator.share({ title: r.title, text }); return; } catch (err) { if (err.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(text); toast('Ricetta copiata negli appunti'); } catch { toast('Impossibile copiare'); }

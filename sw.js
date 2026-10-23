@@ -1,11 +1,12 @@
 // Service worker: rende l'app disponibile offline.
 // Cambia VERSION ad ogni rilascio per forzare l'aggiornamento della cache.
-const VERSION = 'ricettario-v1';
+const VERSION = 'ricettario-v4';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',
   './js/app.js', './js/utils.js', './js/db.js', './js/store.js', './js/github.js',
-  './js/parser.js', './js/match.js', './js/ui.js', './js/views.js', './js/views-home.js', './js/samples.js',
+  './js/parser.js', './js/match.js', './js/ui.js', './js/views.js', './js/views-home.js', './js/samples.js', './js/season.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
+  './fonts/dm-sans.woff2', './fonts/fraunces.woff2',
 ];
 
 self.addEventListener('install', (e) => {

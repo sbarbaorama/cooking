@@ -16,10 +16,11 @@ I dati restano sul dispositivo e si sincronizzano con un **repository GitHub pri
 - **Dettaglio ricetta**: porzioni ricalcolabili, ingredienti da spuntare, indicazione di cosa hai già in dispensa, passaggi con **timer** cliccabili ("cuocete 10 minuti" → ⏱), stampa, condivisione, duplicazione, foto personale.
 - **Modalità cucina**: un passaggio per schermata a caratteri grandi, schermo sempre acceso, scorrimento col dito o con le frecce.
 - **Dispensa e "Cosa cucino?"**: inserisci cosa hai in casa (con scadenze facoltative) e ottieni le ricette ordinate per ingredienti disponibili, con priorità a quelli in scadenza. Puoi indicare gli ingredienti da usare per forza e quanti ne possono mancare. Gli ingredienti "sempre in casa" (sale, olio…) non contano come mancanti. Il confronto riconosce singolari/plurali e nomi generici ("pasta" vale per spaghetti, penne…).
-- **Lista della spesa**: aggiungi gli ingredienti di una ricetta (scalati, senza quelli che hai già), somma automatica delle quantità, divisione per reparto, condivisione, "sposta in dispensa" a fine spesa.
+- **Lista della spesa**: aggiungi gli ingredienti di una ricetta (scalati, senza quelli che hai già), somma automatica delle quantità, divisione per reparto, **invio su WhatsApp** (lista formattata per reparto, anche direttamente a un contatto preferito) o con altre app, prodotti frequenti da aggiungere con un tocco, "Annulla" dopo un'eliminazione, "sposta in dispensa" a fine spesa.
+- **Di stagione**: filtro e indicazione delle ricette con frutta e verdura del mese; il riempimento automatico del menu le preferisce.
 - **Menu settimanale**: pranzo e cena per ogni giorno, riempimento automatico delle cene, lista della spesa della settimana.
-- **Sincronizzazione GitHub** automatica, con unione delle modifiche fatte su più dispositivi.
-- Backup/ripristino JSON, tema chiaro/scuro, statistiche, ricette di esempio.
+- **Sincronizzazione GitHub** automatica, con unione delle modifiche fatte su più dispositivi. Per condividere la lista in famiglia, *Altro → Lista condivisa* genera un link che configura l'app sul telefono dell'altra persona (senza token).
+- Grafica mediterranea (terracotta, blu egeo, oliva, limone), backup/ripristino JSON, tema chiaro/scuro, statistiche, ricette di esempio.
 
 ## 1. Pubblicare l'app (repository del codice)
 
@@ -68,7 +69,7 @@ python -m http.server 8765
 
 e poi apri `http://localhost:8765`.
 
-Quando pubblichi una nuova versione, cambia `VERSION` in `sw.js` così i dispositivi aggiornano la cache offline.
+Per pubblicare una nuova versione fai doppio clic su **`pubblica.bat`**: mostra i file modificati, chiede una descrizione (Invio per una automatica), aumenta `VERSION` in `sw.js` così i dispositivi aggiornano la cache offline, poi fa commit e push su GitHub. Puoi anche passare la descrizione da riga di comando: `pubblica.bat "Nuova grafica"`.
 
 ### Struttura
 
@@ -83,7 +84,9 @@ Quando pubblichi una nuova versione, cambia `VERSION` in `sw.js` così i disposi
 | `js/match.js` | Confronto ingredienti/dispensa e reparti della spesa |
 | `js/ui.js` | Componenti condivisi: foto, finestre, timer, modalità cucina, lista spesa |
 | `js/views.js`, `js/views-home.js` | Le schermate |
+| `js/season.js` | Calendario di frutta e verdura di stagione |
 | `js/samples.js` | Ricette di esempio |
+| `fonts/` | Caratteri DM Sans e Fraunces (licenza SIL OFL), inclusi per l'uso offline |
 
 ### Formato dei dati (`ricettario.json`)
 
