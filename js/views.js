@@ -138,8 +138,34 @@ function card(r) {
     </div></a>`;
 }
 
+// ===== Titoli unici =====
+/** Chiave di confronto dei titoli: ignora maiuscole, accenti, punteggiatura e spazi in più. */
+export const titleKey = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** Ricetta (diversa da exceptId) che ha già questo titolo. */
+export function findByTitle(title, exceptId = null) {
+  const k = titleKey(title);
+  return k ? store.list('recipes').find((x) => x.id !== exceptId && titleKey(x.title) === k) : null;
+}
+
+/** Primo titolo libero: "Titolo (2)", "Titolo (3)"… */
+export function uniqueTitle(title, exceptId = null) {
+  if (!findByTitle(title, exceptId)) return title;
+  const base = title.replace(/\s*\(\d+\)$/, '');
+  for (let n = 2; ; n++) if (!findByTitle(`${base} (${n})`, exceptId)) return `${base} (${n})`;
+}
+
+/** Titolo per una copia: "X (copia)", poi "X (copia 2)", "X (copia 3)"… */
+function copyTitle(title) {
+  const base = title.replace(/\s*\(copia(?: \d+)?\)$/, '');
+  if (!findByTitle(`${base} (copia)`)) return `${base} (copia)`;
+  for (let n = 2; ; n++) if (!findByTitle(`${base} (copia ${n})`)) return `${base} (copia ${n})`;
+}
+
 export function loadSamples() {
-  const items = SAMPLE_RECIPES.map((r) => ({ ...blankRecipe(), ...structuredClone(r), tags: [...(r.tags || []), 'esempio'] }));
+  const items = SAMPLE_RECIPES.filter((r) => !findByTitle(r.title))
+    .map((r) => ({ ...blankRecipe(), ...structuredClone(r), tags: [...(r.tags || []), 'esempio'] }));
+  if (!items.length) { toast('Le ricette di esempio sono già nel ricettario'); return; }
   store.upsertMany('recipes', items);
   toast(`${items.length} ricette di esempio aggiunte`);
 }
@@ -284,7 +310,7 @@ async function moreMenu(r, factor) {
       try { await navigator.clipboard.writeText(text); toast('Ricetta copiata negli appunti'); } catch { toast('Impossibile copiare'); }
     } else if (act === 'print') setTimeout(() => window.print(), 200);
     else if (act === 'dup') {
-      const copy = { ...structuredClone(r), id: undefined, title: r.title + ' (copia)', cookedCount: 0, lastCooked: null };
+      const copy = { ...structuredClone(r), id: undefined, title: copyTitle(r.title), cookedCount: 0, lastCooked: null };
       delete copy.createdAt;
       store.upsert('recipes', copy);
       location.hash = '#/edit/' + copy.id;
@@ -307,7 +333,7 @@ export function editView(el, id) {
 
   const all = store.list('recipes');
   const cats = [...new Set(['Antipasti', 'Primi', 'Secondi', 'Contorni', 'Dolci', 'Piatti unici', 'Lievitati', 'Salse', 'Bevande', ...all.map((x) => x.category).filter(Boolean)])];
-  const dup = isNew && all.find((x) => (r.source && x.source === r.source) || (r.title && normText(x.title) === normText(r.title)));
+  const dup = isNew && r.source && all.find((x) => x.source === r.source && titleKey(x.title) !== titleKey(r.title));
 
   el.innerHTML = `
     <div class="page-head">
@@ -316,10 +342,11 @@ export function editView(el, id) {
       <button class="btn primary" data-act="save">💾 Salva</button>
     </div>
     ${fromImport ? `<div class="card mb" style="background:var(--ok-soft);border-color:transparent">✨ Ricetta importata: controlla i campi e premi <b>Salva</b>.${r._partial ? ' <br><b>Attenzione:</b> la pagina non conteneva dati strutturati, il riconoscimento potrebbe essere impreciso.' : ''}</div>` : ''}
-    ${dup ? `<div class="card mb" style="background:var(--warn-soft);border-color:transparent">⚠️ Hai già una ricetta simile: <a href="#/r/${dup.id}">${esc(dup.title)}</a></div>` : ''}
+    ${dup ? `<div class="card mb" style="background:var(--warn-soft);border-color:transparent">⚠️ Hai già una ricetta importata dallo stesso link: <a href="#/r/${dup.id}">${esc(dup.title)}</a></div>` : ''}
     <form id="form" class="stack" autocomplete="off">
       <div class="card stack">
         <label class="field"><span>Titolo *</span><input type="text" name="title" required value="${esc(r.title)}" placeholder="Es. Spaghetti alla carbonara"></label>
+        <div class="title-dup" id="title-dup" role="alert" hidden></div>
         <label class="field"><span>Descrizione</span><textarea name="description" rows="2" style="min-height:60px">${esc(r.description)}</textarea></label>
         <div class="grid-form">
           <label class="field"><span>Porzioni</span><input type="number" name="servings" min="1" max="99" value="${esc(r.servings || 4)}"></label>
@@ -372,6 +399,57 @@ export function editView(el, id) {
     } catch (err) { toast('Impossibile leggere la foto'); console.error(err); }
   });
 
+  // Avviso immediato se il titolo è già usato da un'altra ricetta
+  const dupBox = el.querySelector('#title-dup');
+  const checkTitle = () => {
+    const other = findByTitle(form.title.value, r.id);
+    form.title.classList.toggle('invalid', !!other);
+    dupBox.hidden = !other;
+    if (other) {
+      dupBox.innerHTML = `⚠️ Hai già una ricetta chiamata <a href="#/r/${other.id}">${esc(other.title)}</a>. Per salvare questa scegli un nome diverso, ad esempio <button type="button" class="linklike" data-suggest>${esc(uniqueTitle(form.title.value.trim(), r.id))}</button>.`;
+    }
+    return other;
+  };
+  form.title.addEventListener('input', debounce(checkTitle, 150));
+  dupBox.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-suggest]')) return;
+    form.title.value = e.target.closest('[data-suggest]').textContent;
+    checkTitle();
+    form.title.focus();
+  });
+  checkTitle();
+
+  /** Il titolo esiste già: si sceglie cosa fare (non si salvano due ricette con lo stesso nome). */
+  const askDuplicate = (other, out) => {
+    const alt = uniqueTitle(out.title, r.id);
+    const m = openModal(`
+      <header><h2>Nome già usato</h2><button class="btn ghost icon" data-close aria-label="Chiudi">✕</button></header>
+      <div class="mbody stack">
+        <p style="margin:0">Nel ricettario c’è già <b>${esc(other.title)}</b>${other.category ? ` (${esc(other.category)})` : ''}. Due ricette non possono avere lo stesso nome.</p>
+        <ul class="pick-list">
+          <li><button data-c="rename">✍️ Salva come “${esc(alt)}”</button></li>
+          <li><button data-c="edit">🔤 Scegli un altro nome</button></li>
+          ${isNew ? `<li><button data-c="replace">♻️ Sostituisci la ricetta esistente<span class="small muted">Mantiene voti, preferita e volte cucinata</span></button></li>` : ''}
+          <li><button data-c="open">📖 Apri la ricetta esistente</button></li>
+        </ul>
+      </div>`);
+    m.el.addEventListener('click', (e) => {
+      const c = e.target.closest('[data-c]')?.dataset.c;
+      if (!c) return;
+      m.close();
+      if (c === 'rename') { form.title.value = alt; save(); }
+      else if (c === 'edit') { checkTitle(); form.title.focus(); form.title.select(); }
+      else if (c === 'open') location.hash = '#/r/' + other.id;
+      else if (c === 'replace') {
+        const keep = { id: other.id, createdAt: other.createdAt, rating: other.rating, favorite: other.favorite, cookedCount: other.cookedCount, lastCooked: other.lastCooked };
+        const merged = { ...out, ...keep, title: other.title, image: out.image || other.image, notes: [other.notes, out.notes].filter(Boolean).join('\n\n') };
+        store.upsert('recipes', merged);
+        toast('Ricetta sostituita ✓');
+        location.hash = '#/r/' + merged.id;
+      }
+    });
+  };
+
   const num = (v) => (v === '' || v == null ? null : Math.max(0, Math.round(+v)) || null);
   const save = () => {
     const f = new FormData(form);
@@ -392,6 +470,8 @@ export function editView(el, id) {
       image, source: String(f.get('source') || '').trim(),
     };
     delete out._partial;
+    const other = findByTitle(title, r.id);
+    if (other) { askDuplicate(other, out); return; }
     store.upsert('recipes', out);
     toast('Ricetta salvata ✓');
     location.hash = '#/r/' + out.id;

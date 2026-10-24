@@ -572,3 +572,10 @@ body:has(#update-bar) .toast { bottom: 96px; }
 .import-status .mono { word-break: break-all; }
 .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--sea); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== Titolo già usato ===== */
+input.invalid { border-color: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lemon) 30%, transparent); }
+.title-dup { margin-top: 8px !important; padding: 10px 13px; border-radius: 12px; background: var(--warn-soft); font-size: .9rem; }
+.linklike { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--sea); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.pick-list li button { flex-wrap: wrap; }
+.pick-list li button .small { flex-basis: 100%; padding-left: 28px; margin-top: -6px; }

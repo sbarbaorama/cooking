@@ -12,7 +12,7 @@ I dati restano sul dispositivo e si sincronizzano con un **repository GitHub pri
   - *Da un link*: legge i dati strutturati (schema.org/Recipe) usati dalla maggior parte dei siti di ricette (GialloZafferano, Cookist, BBC Good Food…).
   - *Bookmarklet* per PC: un pulsante nei preferiti che manda la ricetta della pagina aperta al Ricettario.
   - *Condividi → Ricettario* su Android (con l'app installata).
-  - Avviso se la ricetta esiste già.
+  - **Niente doppioni**: due ricette non possono avere lo stesso nome (maiuscole, accenti e punteggiatura non contano). Mentre scrivi il titolo compare un avviso con un nome alternativo; al salvataggio puoi salvare con un altro nome, sostituire la ricetta esistente (mantenendo voti, preferita e volte cucinata) o aprirla. Avviso anche se importi di nuovo un link già usato.
 - **Dettaglio ricetta**: porzioni ricalcolabili, ingredienti da spuntare, indicazione di cosa hai già in dispensa, passaggi con **timer** cliccabili ("cuocete 10 minuti" → ⏱), stampa, condivisione, duplicazione, foto personale.
 - **Modalità cucina**: un passaggio per schermata a caratteri grandi, schermo sempre acceso, scorrimento col dito o con le frecce.
 - **Dispensa e "Cosa cucino?"**: inserisci cosa hai in casa (con scadenze facoltative) e ottieni le ricette ordinate per ingredienti disponibili, con priorità a quelli in scadenza. Puoi indicare gli ingredienti da usare per forza e quanti ne possono mancare. Gli ingredienti "sempre in casa" (sale, olio…) non contano come mancanti. Il confronto riconosce singolari/plurali e nomi generici ("pasta" vale per spaghetti, penne…).
