@@ -376,9 +376,39 @@ const FALLBACK_PROXIES = [
   'https://api.allorigins.win/raw?url={url}',
   'https://corsproxy.io/?url={url}',
   'https://api.codetabs.com/v1/proxy?quest={url}',
+  'https://api.allorigins.win/get?url={url}',
 ];
+const isGoogle = (h) => /(^|\.)google\.[a-z.]+$|^share\.google$|^goo\.gl$/i.test(h);
+const hostOf = (u) => { try { return new URL(u.replace('{url}', '')).hostname.replace(/^www\./, ''); } catch { return u; } };
 
-async function fetchText(url, ms = 15000) {
+/**
+ * Ripulisce un link condiviso dal telefono: toglie i rimandi di Google (AMP, /url?q=),
+ * la cache AMP, i parametri di tracciamento e la parte dopo "#".
+ */
+export function cleanRecipeUrl(raw) {
+  let u = String(raw || '').trim().replace(/[)\].,;:!?»"'’]+$/, '');
+  if (!/^https?:\/\//i.test(u) && /^[\w-]+(\.[\w-]+)+\//.test(u)) u = 'https://' + u;
+  try {
+    let x = new URL(u);
+    const amp = x.pathname.match(/^\/amp\/s\/(.+)$/);
+    if (isGoogle(x.hostname) && amp) x = new URL('https://' + amp[1] + x.search);
+    if (isGoogle(x.hostname) && x.pathname === '/url' && (x.searchParams.get('q') || x.searchParams.get('url'))) x = new URL(x.searchParams.get('q') || x.searchParams.get('url'));
+    const cdn = x.hostname.endsWith('.cdn.ampproject.org') && x.pathname.match(/^\/[cv]\/(?:s\/)?(.+)$/);
+    if (cdn) x = new URL('https://' + cdn[1]);
+    for (const k of [...x.searchParams.keys()]) if (/^(utm_|fbclid$|gclid$|_gl$|amp$|si$|ref$)/i.test(k)) x.searchParams.delete(k);
+    x.hash = '';
+    return x.toString();
+  } catch { return u; }
+}
+
+/** Trova nel testo condiviso il link della ricetta (anche senza "https://"). */
+export function findSharedUrl(text) {
+  const s = String(text || '');
+  const m = s.match(/https?:\/\/[^\s<>"]+/i) || s.match(/\b(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\/[^\s<>"]*/i);
+  return m ? cleanRecipeUrl(m[0]) : '';
+}
+
+async function fetchText(url, ms = 25000) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
   try {
@@ -388,20 +418,73 @@ async function fetchText(url, ms = 15000) {
   } finally { clearTimeout(t); }
 }
 
-/** Scarica una pagina di ricetta (tramite proxy CORS) e la converte. */
-export async function fetchRecipeFromUrl(url, proxyTpl) {
+async function fetchViaProxy(tpl, url) {
+  const txt = await fetchText(tpl.replace('{url}', encodeURIComponent(url)));
+  if (tpl.includes('/get?url=')) { try { return JSON.parse(txt).contents || ''; } catch { /* testo semplice */ } }
+  return txt;
+}
+
+/** Link "vero" della pagina (canonical / og:url), o la destinazione di una pagina di rimando di Google. */
+function linkedUrl(html, base) {
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const b = new URL(base);
+    const cands = [doc.querySelector('link[rel="canonical"]')?.href, doc.querySelector('meta[property="og:url"]')?.content];
+    if (isGoogle(b.hostname)) cands.push(...[...doc.querySelectorAll('a[href^="http"]')].map((a) => a.getAttribute('href')));
+    for (const c of cands) {
+      if (!c) continue;
+      const u = cleanRecipeUrl(new URL(c, base).toString());
+      const x = new URL(u);
+      if (/^https?:$/.test(x.protocol) && !isGoogle(x.hostname) && u !== cleanRecipeUrl(base)) return u;
+    }
+  } catch {}
+  return '';
+}
+
+/**
+ * Scarica una pagina di ricetta tramite i proxy CORS, tutti insieme (vince il primo che risponde
+ * con una ricetta completa), e la converte. In caso di errore, err.details elenca cosa è successo.
+ */
+export async function fetchRecipeFromUrl(rawUrl, proxyTpl) {
   const proxies = [...new Set([proxyTpl, ...FALLBACK_PROXIES].filter(Boolean))];
-  let lastErr = null, partial = null;
-  for (const tpl of proxies) {
-    try {
-      const html = await fetchText(tpl.replace('{url}', encodeURIComponent(url)));
-      const r = recipeFromHTML(html, url);
-      if (r && !r._partial) return r;
-      if (r && !partial) partial = r;
-    } catch (e) { lastErr = e; }
+  const details = [];
+  const attempt = (target) => new Promise((resolve) => {
+    let pending = proxies.length, partial = null, html0 = '';
+    for (const tpl of proxies) {
+      fetchViaProxy(tpl, target)
+        .then((html) => {
+          if (!html0 && html) html0 = html;
+          const r = recipeFromHTML(html, target);
+          if (r && !r._partial) resolve({ r, html });
+          else if (r) { partial ||= r; details.push(`${hostOf(tpl)}: ricetta riconosciuta solo in parte`); }
+          else {
+            details.push(`${hostOf(tpl)}: pagina scaricata ma senza ricetta`);
+            // Pagina di rimando (es. share.google): si segue subito il link, senza aspettare gli altri proxy
+            if (html && linkedUrl(html, target)) resolve({ r: null, html });
+          }
+        })
+        .catch((e) => details.push(`${hostOf(tpl)}: ${e.name === 'AbortError' ? 'tempo scaduto' : e.message === 'Failed to fetch' ? 'non raggiungibile' : e.message}`))
+        .finally(() => { if (--pending === 0) resolve({ r: partial, html: html0 }); });
+    }
+  });
+
+  let url = cleanRecipeUrl(rawUrl);
+  let res = await attempt(url);
+  if ((!res.r || res.r._partial) && res.html) {
+    // Pagina di rimando (es. share.google) o versione AMP: riprova con il link vero della ricetta
+    const next = linkedUrl(res.html, url);
+    if (next) {
+      const res2 = await attempt(next);
+      if (res2.r && (!res.r || !res2.r._partial)) { res = res2; url = next; }
+    }
   }
-  if (partial) return partial;
-  throw new Error(lastErr ? `Impossibile scaricare la pagina (${lastErr.message}).` : 'Nessuna ricetta trovata nella pagina.');
+  if (res.r) return res.r;
+  const err = new Error(details.some((d) => /senza ricetta|in parte/.test(d))
+    ? `La pagina di ${hostOf(url)} è stata scaricata ma non contiene una ricetta riconoscibile.`
+    : `Impossibile scaricare la pagina di ${hostOf(url)}.`);
+  err.details = details;
+  err.url = url;
+  throw err;
 }
 
 /** Dati inviati dal bookmarklet (pagina già aperta nel browser). */

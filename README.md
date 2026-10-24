@@ -57,6 +57,8 @@ I dati finiscono nel file `ricettario.json` (JSON leggibile) e le foto scattate 
 ## Importare dai siti
 
 - Il download delle pagine passa da un proxy CORS pubblico (di default `api.allorigins.win`, con altri due come riserva) perché i browser non permettono a una pagina di leggere un altro sito. Il proxy vede solo l'indirizzo della ricetta. Puoi cambiarlo in *Altro → Importare ricette dal web* (`{url}` viene sostituito dal link).
+- I proxy vengono provati tutti insieme e vince il primo che restituisce la ricetta. I link condivisi dal telefono vengono ripuliti: rimandi di Google (`google.com/amp/s/…`, `share.google/…`, `/url?q=…`), cache AMP e parametri di tracciamento.
+- Se l'importazione non riesce, l'app mostra il link usato, il risultato di ogni proxy (*Dettagli tecnici*), un pulsante **Riprova** e, se insieme al link è arrivato del testo, **Usa il testo condiviso**.
 - Se un sito blocca il proxy: usa il **bookmarklet** (gira direttamente sulla pagina aperta, senza proxy) oppure copia il testo e usa **Incolla testo**.
 
 ## Sviluppo in locale

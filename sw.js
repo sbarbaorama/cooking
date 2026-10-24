@@ -1,7 +1,7 @@
 // Service worker: rende l'app disponibile offline.
 // VERSION viene aumentata da pubblica.bat a ogni rilascio: il browser vede che questo file è cambiato,
 // installa la nuova versione scaricando i file direttamente dal server e l'app mostra "Aggiorna".
-const VERSION = 'ricettario-v5';
+const VERSION = 'ricettario-v6';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',
   './js/app.js', './js/utils.js', './js/db.js', './js/store.js', './js/github.js',

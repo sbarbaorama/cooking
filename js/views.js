@@ -3,7 +3,7 @@ import * as store from './store.js';
 import { esc, toast, minToText, fmtDate, confirmDialog, recipeEmoji, debounce, shareWhatsApp } from './utils.js';
 import {
   parseIngredient, formatIngredient, isGroupHeader, blankRecipe, parseRecipeText, fetchRecipeFromUrl,
-  recipeFromBookmarklet, recipeToText,
+  recipeFromBookmarklet, recipeToText, cleanRecipeUrl,
 } from './parser.js';
 import { normText, tokens, ingredientName, prepareHave, findHave } from './match.js';
 import { imgTag, hydrateImages, storePhoto, addToShopping, stepHTML, cookMode, markCooked, openModal } from './ui.js';
@@ -405,7 +405,7 @@ export function editView(el, id) {
 }
 
 // ===================== IMPORTAZIONE =====================
-const importState = { tab: 'paste', text: '', url: '' };
+const importState = { tab: 'paste', text: '', url: '', alt: '' };
 
 export function importView(el, params = {}) {
   // Dati arrivati dal bookmarklet o dalla condivisione Android
@@ -417,7 +417,7 @@ export function importView(el, params = {}) {
     } catch (e) { console.error(e); toast('Dati del bookmarklet non validi'); }
   }
   if (params.url || params.text) history.replaceState(null, '', location.pathname + location.search + '#/import');
-  if (params.url) { importState.tab = 'url'; importState.url = params.url; }
+  if (params.url) { importState.tab = 'url'; importState.url = params.url; importState.alt = params.alt || ''; }
   if (params.text) { importState.tab = 'paste'; importState.text = params.text; }
 
   el.innerHTML = `
@@ -460,7 +460,7 @@ export function importView(el, params = {}) {
         <div class="card stack">
           <p class="muted" style="margin:0">Incolla il link di una pagina con una ricetta (GialloZafferano, Cookist, Fatto in casa da Benedetta, BBC Good Food, ecc.).</p>
           <div class="add-row"><input type="url" id="url" placeholder="https://www.sito.it/ricetta…" value="${esc(importState.url)}"><button class="btn primary" data-act="fetch">Importa</button></div>
-          <p class="small muted" id="status" style="margin:0"></p>
+          <div class="small muted" id="status"></div>
           <details class="small"><summary>Come funziona e alternative</summary>
             <p>La pagina viene scaricata tramite un servizio “proxy” pubblico (configurabile nelle impostazioni) perché i browser non permettono di leggere direttamente altri siti. Se un sito non funziona:</p>
             <ul>
@@ -473,17 +473,33 @@ export function importView(el, params = {}) {
       const inp = tabEl.querySelector('#url');
       const status = tabEl.querySelector('#status');
       const go = async () => {
-        const url = inp.value.trim();
-        if (!/^https?:\/\//.test(url)) { toast('Inserisci un link valido (https://…)'); return; }
+        const url = cleanRecipeUrl(inp.value);
+        if (!/^https?:\/\/[^/]+\.[^/]+/.test(url)) { toast('Inserisci un link valido (https://…)'); return; }
+        inp.value = url;
         importState.url = url;
         const btn = tabEl.querySelector('[data-act=fetch]');
-        btn.disabled = true; status.textContent = '⏳ Scarico la pagina…';
+        btn.disabled = true;
+        status.className = 'import-status';
+        status.innerHTML = `<span class="spin"></span> Scarico la pagina da <b>${esc(new URL(url).hostname.replace(/^www\./, ''))}</b>… su rete mobile può volerci qualche secondo.`;
         try {
           draft = await fetchRecipeFromUrl(url, store.state.settings.proxy);
-          importState.url = '';
+          importState.url = ''; importState.alt = '';
           location.hash = '#/new';
         } catch (e) {
-          status.innerHTML = `❌ ${esc(e.message)} Prova a copiare il testo della ricetta e usare “Incolla testo”.`;
+          console.warn('Importazione non riuscita', e.url, e.details);
+          status.className = 'import-status err';
+          status.innerHTML = `<b>❌ ${esc(e.message)}</b>
+            <div class="small muted">Link usato: <span class="mono">${esc(e.url || url)}</span></div>
+            ${e.details?.length ? `<details class="small"><summary>Dettagli tecnici</summary><ul>${e.details.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>` : ''}
+            <div class="row">
+              <button class="btn sm primary" data-act="retry">🔄 Riprova</button>
+              ${importState.alt ? '<button class="btn sm" data-act="usealt">📋 Usa il testo condiviso</button>' : ''}
+              <button class="btn sm" data-act="topaste">✍️ Incolla il testo</button>
+            </div>
+            <div class="small muted"><b>Dal telefono:</b> apri la ricetta in Chrome (non dall’app Google), tieni premuto sul testo, seleziona ingredienti e preparazione e usa <i>Condividi → Ricettario</i>: l’app legge direttamente il testo, senza scaricare la pagina.</div>`;
+          status.querySelector('[data-act=retry]').onclick = go;
+          status.querySelector('[data-act=usealt]')?.addEventListener('click', () => { draft = { ...parseRecipeText(importState.alt), source: url }; importState.alt = ''; location.hash = '#/new'; });
+          status.querySelector('[data-act=topaste]').onclick = () => { importState.tab = 'paste'; drawTab(); };
         } finally { btn.disabled = false; }
       };
       tabEl.querySelector('[data-act=fetch]').onclick = go;

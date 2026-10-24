@@ -5,6 +5,7 @@ import { recipesView, recipeView, editView, importView } from './views.js';
 import { pantryView, shoppingView, planView, settingsView } from './views-home.js';
 import { debounce, toast } from './utils.js';
 import { initServiceWorker } from './version.js';
+import { findSharedUrl } from './parser.js';
 
 const viewEl = document.getElementById('view');
 let currentKey = '';
@@ -108,9 +109,13 @@ document.getElementById('sync-btn').addEventListener('click', async () => {
 function handleShareTarget() {
   const sp = new URLSearchParams(location.search);
   if (!sp.has('share_url') && !sp.has('share_text') && !sp.has('share_title')) return;
-  const all = [sp.get('share_url'), sp.get('share_text')].filter(Boolean).join(' ');
-  const url = (all.match(/https?:\/\/[^\s]+/) || [])[0];
-  const hash = url ? `#/import?url=${encodeURIComponent(url)}&auto=1` : `#/import?text=${encodeURIComponent(sp.get('share_text') || '')}`;
+  const text = sp.get('share_text') || '';
+  const url = findSharedUrl(sp.get('share_url')) || findSharedUrl(text);
+  // Se insieme al link arriva anche del testo (es. una selezione), lo si tiene come riserva
+  const rest = text.replace(/https?:\/\/\S+/g, '').trim();
+  const hash = url
+    ? `#/import?url=${encodeURIComponent(url)}&auto=1${rest.length > 150 ? `&alt=${encodeURIComponent(rest.slice(0, 6000))}` : ''}`
+    : `#/import?text=${encodeURIComponent(text)}`;
   history.replaceState(null, '', location.pathname + hash);
 }
 

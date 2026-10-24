@@ -564,3 +564,11 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 @media (max-width: 899px) { #update-bar { bottom: calc(var(--bottom-h) + 22px + env(safe-area-inset-bottom)); } }
 body:has(#update-bar) .toast { bottom: 96px; }
 @media (max-width: 899px) { body:has(#update-bar) .toast { bottom: calc(var(--bottom-h) + 96px + env(safe-area-inset-bottom)); } }
+
+/* ===== Importazione da link ===== */
+.import-status { display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.import-status.err { padding: 14px 16px; border-radius: 14px; background: var(--danger-soft); color: var(--text); }
+.import-status.err > b { color: var(--danger); }
+.import-status .mono { word-break: break-all; }
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--sea); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
