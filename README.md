@@ -8,7 +8,7 @@ I dati restano sul dispositivo e si sincronizzano con un **repository GitHub pri
 
 - **Ricette**: elenco con ricerca (anche per ingrediente), categorie, tag, preferite, voti, ordinamento (recenti, più votate, più cucinate, più veloci, da riscoprire), pulsante "Ispirami".
 - **Importazione**
-  - *Incolla testo*: titolo, porzioni, tempi, difficoltà, ingredienti, passaggi e note vengono riconosciuti in automatico.
+  - *Incolla testo*: titolo, porzioni, tempi, difficoltà, ingredienti, passaggi e note vengono riconosciuti in automatico. Negli ingredienti una riga che finisce con `:` (es. `Per decorare:`) è il titolo di una sezione e non finisce nella lista della spesa; le righe brevi che iniziano con "Per" senza quantità (`Per la crema`) diventano sezioni da sole.
   - *Da un link*: legge i dati strutturati (schema.org/Recipe) usati dalla maggior parte dei siti di ricette (GialloZafferano, Cookist, BBC Good Food…).
   - *Bookmarklet* per PC: un pulsante nei preferiti che manda la ricetta della pagina aperta al Ricettario.
   - *Condividi → Ricettario* su Android (con l'app installata).

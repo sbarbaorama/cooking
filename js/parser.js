@@ -130,6 +130,19 @@ const ING_H = /^(?:ingredienti|ingredients|occorrente|cosa (?:ti )?serve|lista i
 const STEP_H = /^(?:preparazione|procedimento|istruzioni|metodo|esecuzione|come (?:si )?prepar\w*|instructions|directions|method|steps?|passaggi|realizzazione)\b[^.]{0,40}$/i;
 const NOTE_H = /^(?:note|consigli|conservazione|suggerimenti|curiosit[àa]|varianti|tips?|notes)\b[^.]{0,30}$/i;
 const STEP_NUM = /^(?:(?:passo|step|fase|passaggio)\s*)?\d+\s*[.):\-–]\s*/i;
+// "Preparazione della crema:", "Procedimento per il ripieno:" → sezione, non inizio del procedimento
+const SUB_SECTION = /^(?:preparazione|procedimento|realizzazione|esecuzione)\s+(?:del|dello|della|dei|degli|delle|di|per)\b.*:\s*$/i;
+const isStepHeading = (l) => STEP_H.test(l) && !SUB_SECTION.test(l);
+
+/**
+ * Nella lista ingredienti, una riga breve come "Per decorare" o "Per la crema" (senza quantità)
+ * è il titolo di una sezione: le si aggiungono i due punti così non finisce nella spesa.
+ */
+export function asSectionLine(l) {
+  if (isGroupHeader(l)) return l;
+  if (/^per\s+(?!\d)[^\d]{2,45}$/i.test(l) && !/\bq\.?\s?b\.?\b|\bpersone\b|\bporzioni\b/i.test(l)) return l.replace(/[\s.]*$/, ':');
+  return l;
+}
 
 function readMeta(text, r) {
   let m;
@@ -144,6 +157,7 @@ function readMeta(text, r) {
 }
 
 function isMetaLine(l) {
+  if (/^(?:dosi\s+)?per\s+\d+\s*(?:persone|porzioni|pers\.?)\s*:?$/i.test(l)) return true;
   return /^(?:dosi|porzioni|persone|preparazione|cottura|difficolt|costo|tempo|totale|calorie|kcal)\b[^.]{0,40}$/i.test(l) && /\d|facile|media|difficile|basso|medio|elevato/i.test(l);
 }
 
@@ -175,10 +189,10 @@ export function parseRecipeText(input) {
 
   const lines = text.replace(/\r/g, '').split('\n').map((l) => l.replace(/\s+/g, ' ').trim());
   const iIng = lines.findIndex((l) => ING_H.test(l));
-  const iStep = lines.findIndex((l, i) => STEP_H.test(l) && (iIng < 0 || i > iIng));
+  const iStep = lines.findIndex((l, i) => isStepHeading(l) && (iIng < 0 || i > iIng));
   const iNote = lines.findIndex((l, i) => NOTE_H.test(l) && i > Math.max(iIng, iStep));
 
-  const firstIdx = lines.findIndex((l) => l && !ING_H.test(l) && !STEP_H.test(l) && !/^https?:\/\//.test(l));
+  const firstIdx = lines.findIndex((l) => l && !ING_H.test(l) && !isStepHeading(l) && !/^https?:\/\//.test(l));
   if (firstIdx >= 0 && (iIng < 0 || firstIdx < iIng) && lines[firstIdx].length < 140) r.title = lines[firstIdx].replace(/^#+\s*/, '');
 
   const body = (a, b) => lines.slice(a, b).filter((l) => l && !/^\d+$/.test(l));
@@ -215,7 +229,7 @@ export function parseRecipeText(input) {
   }
 
   r.description = descLines.join(' ').slice(0, 600);
-  r.ingredients = ingLines.map(cleanLine).filter(Boolean);
+  r.ingredients = ingLines.map(cleanLine).filter(Boolean).map(asSectionLine);
   r.steps = splitSteps(stepLines);
   r.notes = noteLines.join('\n');
   return r;

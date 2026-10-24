@@ -3,7 +3,7 @@ import * as store from './store.js';
 import { esc, toast, minToText, fmtDate, confirmDialog, recipeEmoji, debounce, shareWhatsApp } from './utils.js';
 import {
   parseIngredient, formatIngredient, isGroupHeader, blankRecipe, parseRecipeText, fetchRecipeFromUrl,
-  recipeFromBookmarklet, recipeToText, cleanRecipeUrl,
+  recipeFromBookmarklet, recipeToText, cleanRecipeUrl, asSectionLine,
 } from './parser.js';
 import { normText, tokens, ingredientName, prepareHave, findHave } from './match.js';
 import { imgTag, hydrateImages, storePhoto, addToShopping, stepHTML, cookMode, markCooked, openModal } from './ui.js';
@@ -361,7 +361,7 @@ export function editView(el, id) {
         <label class="field"><span>Tag (separati da virgola)</span><input type="text" name="tags" value="${esc((r.tags || []).join(', '))}" placeholder="veloce, vegetariana, estate"></label>
       </div>
       <div class="card stack">
-        <label class="field"><span>Ingredienti — uno per riga. Per creare un gruppo scrivi una riga che finisce con “:” (es. “Per la crema:”)</span>
+        <label class="field"><span>Ingredienti — uno per riga. Per una sezione scrivi una riga che finisce con “:” (es. “Per decorare:”): non viene contata come ingrediente</span>
           <textarea name="ingredients" rows="10" placeholder="320 g di spaghetti&#10;150 g di guanciale&#10;4 tuorli&#10;Pecorino romano 50 g&#10;Pepe nero q.b.">${esc(r.ingredients.join('\n'))}</textarea></label>
         <label class="field"><span>Preparazione — un passaggio per riga</span>
           <textarea name="steps" rows="10">${esc(r.steps.join('\n'))}</textarea></label>
@@ -464,7 +464,7 @@ export function editView(el, id) {
       difficulty: f.get('difficulty') || '', category: String(f.get('category') || '').trim(), cuisine: String(f.get('cuisine') || '').trim(),
       calories: num(f.get('calories')),
       tags: [...new Set(String(f.get('tags') || '').split(',').map((t) => t.trim().toLowerCase().replace(/^#/, '')).filter(Boolean))],
-      ingredients: String(f.get('ingredients') || '').split('\n').map((l) => l.trim()).filter(Boolean),
+      ingredients: String(f.get('ingredients') || '').split('\n').map((l) => l.trim()).filter(Boolean).map(asSectionLine),
       steps: String(f.get('steps') || '').split('\n').map((l) => l.trim()).filter(Boolean),
       notes: String(f.get('notes') || '').trim(),
       image, source: String(f.get('source') || '').trim(),
