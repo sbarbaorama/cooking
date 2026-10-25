@@ -9,6 +9,7 @@ import { normText, tokens, ingredientName, prepareHave, findHave } from './match
 import { imgTag, hydrateImages, storePhoto, addToShopping, stepHTML, cookMode, markCooked, openModal } from './ui.js';
 import { SAMPLE_RECIPES } from './samples.js';
 import { seasonInfo, monthName } from './season.js';
+import { webSearchPanel } from './websearch.js';
 
 const listState = { q: '', tag: '', cat: '', sort: 'recent', fav: false, season: false, open: false };
 let draft = null;
@@ -91,7 +92,8 @@ export function recipesView(el) {
     const nf = [listState.cat, listState.tag, listState.fav, listState.season, listState.sort !== 'recent'].filter(Boolean).length;
     el.querySelector('#fcount').textContent = nf ? nf : '';
     el.querySelector('#count').textContent = `(${rs.length}${rs.length !== all.length ? ' di ' + all.length : ''})`;
-    grid.innerHTML = rs.length ? rs.map(card).join('') : '<div class="empty" style="grid-column:1/-1">Nessuna ricetta corrisponde ai filtri.</div>';
+    grid.innerHTML = rs.length ? rs.map(card).join('') : `<div class="empty" style="grid-column:1/-1">Nessuna ricetta corrisponde ai filtri.
+      ${listState.q.trim() ? `<div class="mt"><a class="btn" href="#/import?web=name&q=${encodeURIComponent(listState.q.trim())}">🔎 Cerca “${esc(listState.q.trim())}” sul web</a></div>` : ''}</div>`;
     hydrateImages(grid);
   };
   draw();
@@ -485,7 +487,7 @@ export function editView(el, id) {
 }
 
 // ===================== IMPORTAZIONE =====================
-const importState = { tab: 'paste', text: '', url: '', alt: '' };
+const importState = { tab: 'paste', text: '', url: '', alt: '', web: {} };
 
 export function importView(el, params = {}) {
   // Dati arrivati dal bookmarklet o dalla condivisione Android
@@ -499,19 +501,32 @@ export function importView(el, params = {}) {
   if (params.url || params.text) history.replaceState(null, '', location.pathname + location.search + '#/import');
   if (params.url) { importState.tab = 'url'; importState.url = params.url; importState.alt = params.alt || ''; }
   if (params.text) { importState.tab = 'paste'; importState.text = params.text; }
+  if (params.web) {
+    history.replaceState(null, '', location.pathname + location.search + '#/import');
+    importState.tab = 'web';
+    importState.web = { mode: params.web, q: params.q || '', ings: (params.ing || '').split(',').map((x) => x.trim()).filter(Boolean) };
+  }
 
   el.innerHTML = `
     <div class="page-head"><a class="btn ghost" href="#/">← Ricette</a><h1>Aggiungi ricetta</h1></div>
     <div class="tabs" role="tablist">
       <button data-tab="paste" class="${importState.tab === 'paste' ? 'on' : ''}">📋 Incolla testo</button>
       <button data-tab="url" class="${importState.tab === 'url' ? 'on' : ''}">🔗 Da un link</button>
+      <button data-tab="web" class="${importState.tab === 'web' ? 'on' : ''}">🔎 Cerca sul web</button>
       <button data-tab="manual">✍️ Scrivi a mano</button>
     </div>
     <div id="tab"></div>`;
-  const tabEl = el.querySelector('#tab');
+  let tabEl = el.querySelector('#tab');
 
   const drawTab = () => {
     el.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === importState.tab));
+    if (importState.tab === 'web') {
+      const fresh = tabEl.cloneNode(false); tabEl.replaceWith(fresh); tabEl = fresh;
+      webSearchPanel(tabEl, importState.web, {
+        onLink: (url) => { importState.tab = 'url'; importState.url = url; drawTab(); if (url) tabEl.querySelector('[data-act=fetch]').click(); },
+      });
+      return;
+    }
     if (importState.tab === 'paste') {
       tabEl.innerHTML = `
         <div class="card stack">

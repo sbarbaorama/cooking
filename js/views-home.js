@@ -5,7 +5,7 @@ import {
 } from './utils.js';
 import { suggest, tokens, aisleOf, AISLE_ORDER } from './match.js';
 import { parseIngredient } from './parser.js';
-import { seasonInfo } from './season.js';
+import { STYLES, styleCounts, fillWeek, suggestFor, profile } from './menu.js';
 import { thumb, hydrateImages, addToShopping, shoppingText, pickRecipe, openModal } from './ui.js';
 import { isConfigured, sync, testConnection, guessDevice } from './github.js';
 import { loadSamples } from './views.js';
@@ -63,7 +63,8 @@ function cookTab(tab, root) {
           ${[['0', 'tutto disponibile'], ['1', 'al massimo 1 mancante'], ['2', 'al massimo 2 mancanti'], ['any', 'qualsiasi copertura']].map(([v, l]) => `<option value="${v}" ${v === pantryState.maxMissing ? 'selected' : ''}>${l}</option>`).join('')}
         </select></div>
     </div>
-    <div class="section-title"><h2>Ricette suggerite</h2><span class="muted small" id="nres"></span></div>
+    <div class="section-title"><h2>Ricette suggerite</h2><span class="muted small" id="nres"></span>
+      ${names.length ? `<a class="btn sm" href="#/import?web=ing&ing=${encodeURIComponent((pantryState.required.size ? [...pantryState.required] : names.slice(0, 4)).join(','))}" title="Cerca sul web ricette con ${pantryState.required.size ? 'gli ingredienti scelti' : 'alcuni ingredienti della dispensa'}">🔎 Cerca sul web</a>` : ''}</div>
     <div id="res"></div>`;
 
   const res = tab.querySelector('#res');
@@ -395,6 +396,8 @@ async function shopFromWeek(weekStart) {
 // ===================== MENU SETTIMANALE =====================
 const MEALS = [['pranzo', 'Pranzo'], ['cena', 'Cena']];
 const planState = { week: startOfWeek(new Date()) };
+const planPrefs = () => ({ meals: 'both', style: 'varieta', ...(store.state.settings.planPrefs || {}) });
+const MAIN_ICON = { pasta: '🍝', carne: '🥩', pesce: '🐟', veg: '🥦' };
 
 export function planView(el) {
   const ws = planState.week;
@@ -413,7 +416,7 @@ export function planView(el) {
       </div>
     </div>
     <div class="row mb">
-      <button class="btn" data-act="auto">✨ Riempi le cene vuote</button>
+      <button class="btn primary" data-act="auto">✨ Compila automaticamente</button>
       <button class="btn" data-act="shop">🛒 Crea lista della spesa</button>
       ${entries.length ? '<button class="btn ghost danger" data-act="clear">Svuota settimana</button>' : ''}
     </div>
@@ -423,7 +426,7 @@ export function planView(el) {
         ${MEALS.map(([k, label]) => `<div class="meal-slot"><div class="lab">${label}</div>
           ${entries.filter((p) => p.date === iso && p.meal === k).map((p) => {
             const r = p.recipeId && store.get('recipes', p.recipeId);
-            return `<div class="plan-item" data-id="${p.id}">${r ? `<a href="#/r/${r.id}">${esc(recipeEmoji(r))} ${esc(r.title)}</a>` : `<a>${esc(p.title || '?')}</a>`}<button data-del aria-label="Rimuovi">✕</button></div>`;
+            return `<div class="plan-item" data-id="${p.id}">${r ? `<a href="#/r/${r.id}">${esc(recipeEmoji(r))} ${esc(r.title)}</a>` : `<a>${esc(p.title || '?')}</a>`}${r ? '<button data-swap title="Proponi un altro piatto" aria-label="Cambia piatto">↻</button>' : ''}<button data-del aria-label="Rimuovi">✕</button></div>`;
           }).join('')}
           <button class="add-slot" data-add="${iso}|${k}">＋</button></div>`).join('')}
       </div>`;
@@ -435,6 +438,8 @@ export function planView(el) {
     if (w) { planState.week = +w.dataset.w === 0 ? startOfWeek(new Date()) : addDays(planState.week, 7 * +w.dataset.w); redraw(); return; }
     const del = e.target.closest('[data-del]');
     if (del) { store.remove('plan', del.closest('[data-id]').dataset.id); redraw(); return; }
+    const swap = e.target.closest('[data-swap]');
+    if (swap) { swapMeal(swap.closest('[data-id]').dataset.id, entries); redraw(); return; }
     const add = e.target.closest('[data-add]');
     if (add) {
       const [date, meal] = add.dataset.add.split('|');
@@ -447,35 +452,86 @@ export function planView(el) {
     const a = e.target.closest('[data-act]')?.dataset.act;
     if (a === 'shop') await shopFromWeek(ws);
     else if (a === 'clear') { if (await confirmDialog('Rimuovere tutti i pasti di questa settimana?', 'Svuota', true)) { store.removeMany('plan', entries.map((p) => p.id)); redraw(); } }
-    else if (a === 'auto') { autoFill(days, entries); redraw(); }
+    else if (a === 'auto') { if (await autoFillDialog(days, entries)) redraw(); }
   });
 }
 
-function autoFill(days, entries) {
-  const recipes = store.list('recipes').filter((r) => !/dolc|dessert|bevand|salse/i.test(r.category || '') && r.rating !== 1);
-  if (!recipes.length) { toast('Aggiungi prima qualche ricetta'); return; }
-  const used = new Set(entries.map((p) => p.recipeId));
-  const today = isoDate(new Date());
-  // Preferisci ricette ben votate e non cucinate di recente
-  const weight = (r) => 1 + (r.rating || 0) + (r.favorite ? 2 : 0) + (seasonInfo(r).seasonal ? 3 : 0) + Math.min(5, (now() - (r.lastCooked || 0)) / (86400000 * 14));
-  const pick = () => {
-    const pool = recipes.filter((r) => !used.has(r.id));
-    const src = pool.length ? pool : recipes;
-    const tot = src.reduce((s, r) => s + weight(r), 0);
-    let x = Math.random() * tot;
-    for (const r of src) { x -= weight(r); if (x <= 0) return r; }
-    return src[0];
-  };
-  const add = [];
-  for (const d of days) {
-    const iso = isoDate(d);
-    if (iso < today || entries.some((p) => p.date === iso && p.meal === 'cena')) continue;
-    const r = pick();
-    used.add(r.id);
-    add.push({ date: iso, meal: 'cena', recipeId: r.id, servings: r.servings });
+/** Finestra "Compila automaticamente": quali pasti e che tipo di menu. Restituisce true se ha aggiunto qualcosa. */
+function autoFillDialog(days, entries) {
+  return new Promise((resolve) => {
+    const recipes = store.list('recipes');
+    if (!recipes.length) { toast('Aggiungi prima qualche ricetta'); resolve(false); return; }
+    const counts = styleCounts(recipes);
+    const prefs = planPrefs();
+    const today = isoDate(new Date());
+    const isos = days.map(isoDate);
+    const free = (meal) => isos.filter((d) => d >= today && !entries.some((p) => p.date === d && p.meal === meal)).length;
+    let done = false;
+    const m = openModal(`
+      <header><h2>✨ Compila il menu</h2><button class="btn ghost icon" data-close aria-label="Chiudi">✕</button></header>
+      <div class="mbody stack">
+        <div><div class="opt-lab">Quali pasti</div>
+          <div class="seg" data-g="meals">
+            ${[['both', 'Pranzi e cene', free('pranzo') + free('cena')], ['cena', 'Solo cene', free('cena')], ['pranzo', 'Solo pranzi', free('pranzo')]]
+              .map(([v, l, n]) => `<button type="button" data-v="${v}" class="${prefs.meals === v ? 'on' : ''}">${l}<small>${n} liberi</small></button>`).join('')}
+          </div></div>
+        <div><div class="opt-lab">Che tipo di menu</div>
+          <div class="style-grid" data-g="style">
+            ${Object.entries(STYLES).map(([k, st]) => `<button type="button" data-v="${k}" class="style-opt ${prefs.style === k ? 'on' : ''}" ${counts[k] ? '' : 'disabled'}>
+              <span class="ico">${st.icon}</span><b>${st.label}</b><span class="small muted">${st.hint}</span><span class="cnt">${counts[k]} ${counts[k] === 1 ? 'ricetta' : 'ricette'}</span></button>`).join('')}
+          </div></div>
+        <p class="small muted" style="margin:0">Riempie solo i pasti vuoti${isos[6] >= today ? (isos[0] < today ? ', da oggi a domenica' : '') : ''}. A pranzo preferisce i primi, a cena i secondi; sceglie ricette ben votate, di stagione e non cucinate di recente, senza ripeterle nella settimana.</p>
+      </div>
+      <footer><button class="btn" data-close>Annulla</button><button class="btn primary" data-go>✨ Compila</button></footer>`,
+    { onClose: () => resolve(done) });
+    const sel = { ...prefs };
+    m.el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-g] [data-v]');
+      if (b && !b.disabled) {
+        const g = b.closest('[data-g]').dataset.g;
+        sel[g] = b.dataset.v;
+        b.closest('[data-g]').querySelectorAll('[data-v]').forEach((x) => x.classList.toggle('on', x === b));
+        return;
+      }
+      if (!e.target.closest('[data-go]')) return;
+      store.saveSettings({ planPrefs: sel });
+      planState.style = sel.style;
+      const meals = sel.meals === 'both' ? ['pranzo', 'cena'] : [sel.meals];
+      const { add, empty, repeated } = fillWeek(recipes, { days: isos, meals, style: sel.style, existing: entries, fromDate: today });
+      if (add.length) {
+        store.upsertMany('plan', add);
+        done = true;
+        const st = STYLES[sel.style];
+        toast(`${add.length} ${add.length === 1 ? 'pasto aggiunto' : 'pasti aggiunti'} · ${st.label}${empty ? ` · ${empty} restano vuoti: servono più ricette di questo tipo` : repeated ? ` · ${repeated} ${repeated === 1 ? 'ricetta si ripete' : 'ricette si ripetono'}: aggiungine altre di questo tipo` : ''}`, 6000,
+          { label: 'Annulla', fn: () => { store.removeMany('plan', add.map((p) => p.id)); refreshView(); } });
+      } else toast(empty ? 'Non ci sono abbastanza ricette di questo tipo' : 'Non ci sono pasti vuoti da riempire', 4000);
+      m.close();
+    });
+  });
+}
+
+/** Sostituisce un piatto del menu con un altro consigliato (stesso stile dell'ultima compilazione). */
+function swapMeal(id, entries) {
+  const item = store.get('plan', id);
+  if (!item) return;
+  const recipes = store.list('recipes');
+  const style = planState.style || planPrefs().style;
+  const others = entries.filter((p) => p.id !== id && p.recipeId);
+  const ctx = { style, used: new Set([item.recipeId, ...others.map((p) => p.recipeId)]), mainsByDay: new Map(), recipesByDay: new Map(), mainCount: {}, prevMain: null };
+  for (const p of others) {
+    const r = store.get('recipes', p.recipeId);
+    if (!r) continue;
+    const pr = profile(r);
+    ctx.mainsByDay.set(p.date, [...(ctx.mainsByDay.get(p.date) || []), pr.main]);
+    ctx.recipesByDay.set(p.date, [...(ctx.recipesByDay.get(p.date) || []), r.id]);
+    ctx.mainCount[pr.main] = (ctx.mainCount[pr.main] || 0) + 1;
   }
-  if (add.length) { store.upsertMany('plan', add); toast(`${add.length} cene aggiunte`); }
-  else toast('Non ci sono cene da riempire');
+  ctx.recipesByDay.set(item.date, [...(ctx.recipesByDay.get(item.date) || []), item.recipeId]);
+  const r = suggestFor(recipes, item, ctx);
+  if (!r || r.id === item.recipeId) { toast(`Nessun’altra ricetta adatta (${STYLES[style].label})`); return; }
+  const prev = { ...item };
+  store.upsert('plan', { ...item, recipeId: r.id, servings: r.servings, title: undefined });
+  toast(`${MAIN_ICON[profile(r).main] || ''} ${r.title}`, 5000, { label: 'Annulla', fn: () => { store.upsert('plan', prev); refreshView(); } });
 }
 
 /** Finestra "aggiungi questa ricetta al menu". */

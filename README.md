@@ -10,6 +10,7 @@ I dati restano sul dispositivo e si sincronizzano con un **repository GitHub pri
 - **Importazione**
   - *Incolla testo*: titolo, porzioni, tempi, difficoltà, ingredienti, passaggi e note vengono riconosciuti in automatico. Negli ingredienti una riga che finisce con `:` (es. `Per decorare:`) è il titolo di una sezione e non finisce nella lista della spesa; le righe brevi che iniziano con "Per" senza quantità (`Per la crema`) diventano sezioni da sole.
   - *Da un link*: legge i dati strutturati (schema.org/Recipe) usati dalla maggior parte dei siti di ricette (GialloZafferano, Cookist, BBC Good Food…).
+  - *Cerca sul web*: per nome del piatto o per ingredienti (anche presi dalla dispensa), apre Google limitato ai siti di ricette scelti (GialloZafferano, Cookaround, Fatto in casa da Benedetta, Cookist, Misya, Il Cucchiaio d'Argento, La Cucina Italiana). Trovata la ricetta si importa con *Condividi → Ricettario*, il bookmarklet o "Ho copiato il link: importa". C'è un collegamento anche in *Dispensa → Cosa cucino?* e nell'elenco ricette quando la ricerca non trova nulla.
   - *Bookmarklet* per PC: un pulsante nei preferiti che manda la ricetta della pagina aperta al Ricettario.
   - *Condividi → Ricettario* su Android (con l'app installata).
   - **Niente doppioni**: due ricette non possono avere lo stesso nome (maiuscole, accenti e punteggiatura non contano). Mentre scrivi il titolo compare un avviso con un nome alternativo; al salvataggio puoi salvare con un altro nome, sostituire la ricetta esistente (mantenendo voti, preferita e volte cucinata) o aprirla. Avviso anche se importi di nuovo un link già usato.
@@ -18,7 +19,7 @@ I dati restano sul dispositivo e si sincronizzano con un **repository GitHub pri
 - **Dispensa e "Cosa cucino?"**: inserisci cosa hai in casa (con scadenze facoltative) e ottieni le ricette ordinate per ingredienti disponibili, con priorità a quelli in scadenza. Puoi indicare gli ingredienti da usare per forza e quanti ne possono mancare. Gli ingredienti "sempre in casa" (sale, olio…) non contano come mancanti. Il confronto riconosce singolari/plurali e nomi generici ("pasta" vale per spaghetti, penne…).
 - **Lista della spesa**: aggiungi gli ingredienti di una ricetta (scalati, senza quelli che hai già), somma automatica delle quantità, divisione per reparto, **invio su WhatsApp** (lista formattata per reparto, anche direttamente a un contatto preferito) o con altre app, prodotti frequenti da aggiungere con un tocco, "Annulla" dopo un'eliminazione, "sposta in dispensa" a fine spesa.
 - **Di stagione**: filtro e indicazione delle ricette con frutta e verdura del mese; il riempimento automatico del menu le preferisce.
-- **Menu settimanale**: pranzo e cena per ogni giorno, riempimento automatico delle cene, lista della spesa della settimana.
+- **Menu settimanale**: pranzo e cena per ogni giorno. **Compila automaticamente** riempie i pasti vuoti (pranzi e cene, solo cene o solo pranzi) con uno stile a scelta: *Varietà* (pasta, carne, pesce e verdure a rotazione), *Vegetale*, *Pasta*, *Carne* o *Dietetico*. A pranzo preferisce i primi, a cena i secondi, senza ripetere le ricette nella settimana e privilegiando quelle ben votate, di stagione e non cucinate di recente. Il pulsante ↻ su un piatto ne propone un altro dello stesso stile; ogni operazione si può annullare. Lista della spesa della settimana.
 - **Sincronizzazione GitHub** automatica, con unione delle modifiche fatte su più dispositivi. Per condividere la lista in famiglia, *Altro → Lista condivisa* genera un link che configura l'app sul telefono dell'altra persona (senza token).
 - Grafica mediterranea (terracotta, blu egeo, oliva, limone), backup/ripristino JSON, tema chiaro/scuro, statistiche, ricette di esempio.
 
@@ -86,6 +87,7 @@ Per pubblicare una nuova versione fai doppio clic su **`pubblica.bat`** (lancia 
 | `js/match.js` | Confronto ingredienti/dispensa e reparti della spesa |
 | `js/ui.js` | Componenti condivisi: foto, finestre, timer, modalità cucina, lista spesa |
 | `js/views.js`, `js/views-home.js` | Le schermate |
+| `js/menu.js` | Classificazione delle ricette (pasta, carne, pesce, vegetale, leggera) e compilazione del menu |
 | `js/season.js` | Calendario di frutta e verdura di stagione |
 | `js/samples.js` | Ricette di esempio |
 | `fonts/` | Caratteri DM Sans e Fraunces (licenza SIL OFL), inclusi per l'uso offline |
