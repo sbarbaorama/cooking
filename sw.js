@@ -1,11 +1,11 @@
 // Service worker: rende l'app disponibile offline.
 // VERSION viene aumentata da pubblica.bat a ogni rilascio: il browser vede che questo file è cambiato,
 // installa la nuova versione scaricando i file direttamente dal server e l'app mostra "Aggiorna".
-const VERSION = 'ricettario-v9';
+const VERSION = 'ricettario-v10';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',
   './js/app.js', './js/utils.js', './js/db.js', './js/store.js', './js/github.js',
-  './js/parser.js', './js/match.js', './js/ui.js', './js/views.js', './js/views-home.js', './js/samples.js', './js/season.js', './js/version.js', './js/menu.js', './js/websearch.js',
+  './js/parser.js', './js/match.js', './js/ui.js', './js/views.js', './js/views-home.js', './js/samples.js', './js/season.js', './js/version.js', './js/menu.js', './js/websearch.js', './js/nutrition.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
   './fonts/dm-sans.woff2', './fonts/fraunces.woff2',
 ];

@@ -614,3 +614,14 @@ input.invalid { border-color: var(--warn); box-shadow: 0 0 0 3px color-mix(in sr
 .seg button small { display: block; }
 .seg[data-g=meals] button { flex-direction: column; gap: 0; }
 @media (max-width: 560px) { .tabs:has(> :nth-child(4)) { flex-wrap: wrap; } .tabs:has(> :nth-child(4)) button { flex: 1 1 calc(50% - 4px); padding: 8px 6px; } }
+
+/* ===== Calorie ===== */
+.fact-btn { font: inherit; color: var(--text); cursor: pointer; text-align: left; border-style: dashed; }
+.fact-btn:hover { border-color: var(--sea); }
+.kcal-hint { display: block; margin-top: 5px; font-size: .78rem; color: var(--muted); min-height: 1em; }
+.kcal-hint b { color: var(--text); }
+.kcal-big b { display: block; font-family: var(--serif); font-size: 2rem; font-weight: 600; color: var(--accent); line-height: 1.1; }
+.kcal-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+.kcal-table td { padding: 6px 4px; border-bottom: 1px dashed var(--border); vertical-align: top; }
+.kcal-table td:last-child { text-align: right; white-space: nowrap; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kcal-table tr.unk td { color: var(--warn); }

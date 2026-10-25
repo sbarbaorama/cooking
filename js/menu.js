@@ -3,6 +3,7 @@ import { normText } from './match.js';
 import { isGroupHeader } from './parser.js';
 import { seasonInfo } from './season.js';
 import { now } from './utils.js';
+import { recipeKcal } from './nutrition.js';
 
 const MEAT = /\b(poll|tacchin|manz|vitell|maial|salsicc|carne|macinat|bistecc|agnell|conigl|prosciutt|pancett|guancial|speck|salam|mortadell|bresaol|wurstel|cotechin|zampon|lardo|ragu(?! (?:di |vegetal|veg))|hamburger|fesa|lonz|costin|anatra|cinghial|capocoll|nduja|scaloppin|spezzatin|ossobuc|fegat|trippa|piadina al crudo)/;
 const FISH = /\b(pesce|salmon|tonno|merluzz|baccal|gamber|cozz|vongol|calamar|polpo|polpi|seppi|orat|branzin|acciug|alic|spigol|sgombr|scamp|crostace|frutti di mare|trota|sardin|aringh|stoccafiss|nasell|halibut|platess|sogliol|mazzancoll|astic|aragost|bottarg|surimi)/;
@@ -37,11 +38,14 @@ export function profile(r) {
   const pasta = PASTA.test(strip(r.title + ' ' + r.category)) || (r.ingredients || []).some((l) => !isGroupHeader(l) && /\d/.test(l) && PASTA.test(strip(l)));
   const veg = !meat && !fish;
   const heavy = HEAVY.test(h);
-  const kcal = r.calories || null;
-  const light = (LIGHT_TAG.test(h) || (kcal && kcal <= 500) || (!heavy && (veg || fish || /\b(poll|tacchin|petto)/.test(h)))) && !(kcal && kcal > 650) && !FRIED.test(h);
+  // Calorie inserite o stimate dagli ingredienti: se ci sono decidono loro, altrimenti si guarda il tipo di piatto
+  const kcal = recipeKcal(r).kcal;
+  const light = !FRIED.test(h) && (kcal
+    ? kcal <= 450 || (kcal <= 550 && !heavy)
+    : LIGHT_TAG.test(h) || (!heavy && (veg || fish || /\b(poll|tacchin|petto)/.test(h))));
   const main = pasta ? 'pasta' : meat ? 'carne' : fish ? 'pesce' : 'veg';
   const p = {
-    meat, fish, veg, pasta, light, main,
+    meat, fish, veg, pasta, light, main, kcal,
     eligible: !NOT_MAIN.test(cat) && r.rating !== 1,
     primo: pasta || /\bprim|zupp|minestr|vellutat/.test(cat + ' ' + normText(r.title)),
     secondo: /\bsecond|piatti unic|piatto unic/.test(cat) || (!pasta && (meat || fish || /frittat|uov|torta salata|sformat|polpett|burger|pizza|focacc/.test(normText(r.title)))),
@@ -55,7 +59,7 @@ export const STYLES = {
   vegetale: { label: 'Vegetale', icon: '🥦', hint: 'Niente carne né pesce', only: (p) => p.veg },
   pasta: { label: 'Pasta', icon: '🍝', hint: 'Primi di pasta, riso e cereali', prefer: (p) => p.pasta },
   carne: { label: 'Carne', icon: '🥩', hint: 'Piatti di carne', prefer: (p) => p.meat, first: (p) => p.meat && !p.pasta },
-  dietetico: { label: 'Dietetico', icon: '🥗', hint: 'Piatti leggeri: niente fritti, panna o salumi', only: (p) => p.light },
+  dietetico: { label: 'Dietetico', icon: '🥗', hint: 'Piatti leggeri, fino a circa 450–550 kcal a porzione, niente fritti', only: (p) => p.light },
 };
 
 /** Quante ricette sono adatte a ciascuno stile (per mostrarlo nella scelta). */

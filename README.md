@@ -15,6 +15,7 @@ I dati restano sul dispositivo e si sincronizzano con un **repository GitHub pri
   - *Condividi → Ricettario* su Android (con l'app installata).
   - **Niente doppioni**: due ricette non possono avere lo stesso nome (maiuscole, accenti e punteggiatura non contano). Mentre scrivi il titolo compare un avviso con un nome alternativo; al salvataggio puoi salvare con un altro nome, sostituire la ricetta esistente (mantenendo voti, preferita e volte cucinata) o aprirla. Avviso anche se importi di nuovo un link già usato.
 - **Dettaglio ricetta**: porzioni ricalcolabili, ingredienti da spuntare, indicazione di cosa hai già in dispensa, passaggi con **timer** cliccabili ("cuocete 10 minuti" → ⏱), stampa, condivisione, duplicazione, foto personale.
+- **Calorie stimate**: se una ricetta non ha le calorie, l'app le stima dagli ingredienti con una tabella interna di circa 200 alimenti (pesi medi dei pezzi, cucchiai, bicchieri…). La stima compare nella ricetta (tocca per vedere il calcolo riga per riga), nelle schede dell'elenco (🔥 ≈ kcal), nell'ordinamento *Meno caloriche* e in modifica, con il pulsante "usa" per copiarla nel campo. Le calorie inserite a mano hanno sempre la precedenza. Il menu *Dietetico* sceglie i piatti fino a circa 450–550 kcal a porzione.
 - **Modalità cucina**: un passaggio per schermata a caratteri grandi, schermo sempre acceso, scorrimento col dito o con le frecce.
 - **Dispensa e "Cosa cucino?"**: inserisci cosa hai in casa (con scadenze facoltative) e ottieni le ricette ordinate per ingredienti disponibili, con priorità a quelli in scadenza. Puoi indicare gli ingredienti da usare per forza e quanti ne possono mancare. Gli ingredienti "sempre in casa" (sale, olio…) non contano come mancanti. Il confronto riconosce singolari/plurali e nomi generici ("pasta" vale per spaghetti, penne…).
 - **Lista della spesa**: aggiungi gli ingredienti di una ricetta (scalati, senza quelli che hai già), somma automatica delle quantità, divisione per reparto, **invio su WhatsApp** (lista formattata per reparto, anche direttamente a un contatto preferito) o con altre app, prodotti frequenti da aggiungere con un tocco, "Annulla" dopo un'eliminazione, "sposta in dispensa" a fine spesa.
@@ -87,6 +88,7 @@ Per pubblicare una nuova versione fai doppio clic su **`pubblica.bat`** (lancia 
 | `js/match.js` | Confronto ingredienti/dispensa e reparti della spesa |
 | `js/ui.js` | Componenti condivisi: foto, finestre, timer, modalità cucina, lista spesa |
 | `js/views.js`, `js/views-home.js` | Le schermate |
+| `js/nutrition.js` | Tabella delle calorie e stima a porzione |
 | `js/menu.js` | Classificazione delle ricette (pasta, carne, pesce, vegetale, leggera) e compilazione del menu |
 | `js/season.js` | Calendario di frutta e verdura di stagione |
 | `js/samples.js` | Ricette di esempio |

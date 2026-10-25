@@ -10,6 +10,7 @@ import { imgTag, hydrateImages, storePhoto, addToShopping, stepHTML, cookMode, m
 import { SAMPLE_RECIPES } from './samples.js';
 import { seasonInfo, monthName } from './season.js';
 import { webSearchPanel } from './websearch.js';
+import { estimateKcal, recipeKcal } from './nutrition.js';
 
 const listState = { q: '', tag: '', cat: '', sort: 'recent', fav: false, season: false, open: false };
 let draft = null;
@@ -54,7 +55,7 @@ export function recipesView(el) {
       <div class="filter-set" id="fset">
       <select id="cat" aria-label="Categoria"><option value="">Tutte le categorie</option>${cats.map((c) => `<option ${c === listState.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
       <select id="sort" aria-label="Ordina">
-        ${[['recent', 'Più recenti'], ['az', 'A → Z'], ['rating', 'Più votate'], ['cooked', 'Più cucinate'], ['time', 'Più veloci'], ['forgotten', 'Da riscoprire']]
+        ${[['recent', 'Più recenti'], ['az', 'A → Z'], ['rating', 'Più votate'], ['cooked', 'Più cucinate'], ['time', 'Più veloci'], ['kcal', 'Meno caloriche'], ['forgotten', 'Da riscoprire']]
           .map(([v, l]) => `<option value="${v}" ${v === listState.sort ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
       <button class="btn ${listState.fav ? 'on' : ''}" id="fav" title="Solo preferite">★ Preferite</button>
@@ -87,6 +88,7 @@ export function recipesView(el) {
       cooked: (a, b) => (b.cookedCount || 0) - (a.cookedCount || 0),
       time: (a, b) => (totalTime(a) || 9999) - (totalTime(b) || 9999),
       forgotten: (a, b) => (a.lastCooked || 0) - (b.lastCooked || 0),
+      kcal: (a, b) => (recipeKcal(a).kcal || 9999) - (recipeKcal(b).kcal || 9999),
     };
     rs.sort(by[listState.sort] || by.recent);
     const nf = [listState.cat, listState.tag, listState.fav, listState.season, listState.sort !== 'recent'].filter(Boolean).length;
@@ -135,6 +137,7 @@ function card(r) {
         ${t ? `<span>⏱ ${minToText(t)}</span>` : ''}
         ${r.rating ? `<span>${'★'.repeat(r.rating)}</span>` : ''}
         ${r.category ? `<span>${esc(r.category)}</span>` : ''}
+        ${(() => { const k = recipeKcal(r); return k.kcal ? `<span title="${k.estimated ? 'Stima dagli ingredienti' : 'Calorie a porzione'}">🔥 ${k.estimated ? '≈' : ''}${k.kcal} kcal</span>` : ''; })()}
         ${seasonInfo(r).seasonal ? '<span class="season" title="Di stagione">🌿</span>' : ''}
       </div>
     </div></a>`;
@@ -184,6 +187,7 @@ export function recipeView(el, id) {
   const H = prepareHave(store.list('pantry'));
   const t = totalTime(r);
   const si = seasonInfo(r);
+  const est = estimateKcal(r);
 
   const ingHTML = r.ingredients.map((line, i) => {
     const p = parseIngredient(line);
@@ -226,7 +230,8 @@ export function recipeView(el, id) {
           ${r.difficulty ? `<div class="fact"><b>Difficoltà</b>${esc(r.difficulty)}</div>` : ''}
           ${r.category ? `<div class="fact"><b>Categoria</b>${esc(r.category)}</div>` : ''}
           ${r.cuisine ? `<div class="fact"><b>Cucina</b>${esc(r.cuisine)}</div>` : ''}
-          ${r.calories ? `<div class="fact"><b>Calorie</b>${r.calories} kcal</div>` : ''}
+          ${r.calories ? `<div class="fact"><b>Calorie</b>${r.calories} kcal</div>`
+            : est.perServing ? `<button class="fact fact-btn" data-act="kcal" title="Come è calcolata"><b>Calorie · stima</b>≈ ${est.perServing} kcal${est.coverage < 0.6 ? ' ?' : ''} ⓘ</button>` : ''}
         </div>
         ${(r.tags || []).length ? `<div class="chips">${r.tags.map((x) => `<span class="chip">#${esc(x)}</span>`).join('')}</div>` : ''}
         ${si.inSeason.length ? `<p class="season-note ${si.seasonal ? '' : 'part'}">🌿 <b>${si.seasonal ? 'Di stagione' : 'In parte di stagione'}</b> a ${monthName()}: ${esc(si.inSeason.join(', '))}${si.outSeason.length ? `<br><span class="muted">Fuori stagione: ${esc(si.outSeason.join(', '))}</span>` : ''}</p>`
@@ -284,7 +289,22 @@ export function recipeView(el, id) {
       const { added, skipped } = addToShopping(r.ingredients, { recipe: r, factor });
       toast(added ? `${added} ingredienti aggiunti alla spesa${skipped ? ` (${skipped} già in casa)` : ''}` : 'Hai già tutto in casa! 🎉');
     } else if (b.dataset.act === 'more') moreMenu(r, factor);
+    else if (b.dataset.act === 'kcal') kcalDialog(r);
   });
+}
+
+/** Dettaglio della stima delle calorie, riga per riga. */
+export function kcalDialog(r) {
+  const e = estimateKcal(r);
+  const sv = Math.max(1, r.servings || 4);
+  openModal(`
+    <header><h2>🔥 Calorie stimate</h2><button class="btn ghost icon" data-close aria-label="Chiudi">✕</button></header>
+    <div class="mbody stack">
+      <div class="kcal-big"><b>≈ ${e.perServing} kcal</b><span class="muted small">a porzione · ${e.total} kcal in tutto per ${sv} ${sv === 1 ? 'porzione' : 'porzioni'}</span></div>
+      <table class="kcal-table">${e.items.map((x) => `<tr class="${x.known ? '' : 'unk'}"><td>${esc(x.line)}</td><td>${x.known ? (x.kcal ? Math.round(x.kcal) + ' kcal' : '—') : '❓'}</td></tr>`).join('')}</table>
+      ${e.unknown.length ? `<p class="small" style="margin:0">❓ <b>Non conteggiati</b> (ingrediente non in tabella o quantità non chiara): la stima è ${e.coverage >= 0.6 ? 'probabilmente un po’ più bassa del reale' : '<b>poco affidabile</b>'}.</p>` : ''}
+      <p class="small muted" style="margin:0">Valori medi da tabelle nutrizionali; per i pesci interi e i molluschi si considera il peso con lische e gusci, per l’olio di frittura solo quello assorbito. Se conosci il valore esatto, inseriscilo in <b>Modifica → Calorie</b>: avrà la precedenza.</p>
+    </div>`);
 }
 
 function shortUrl(u) { try { const x = new URL(u); return x.hostname.replace(/^www\./, ''); } catch { return u; } }
@@ -358,7 +378,8 @@ export function editView(el, id) {
           <label class="field"><span>Difficoltà</span><select name="difficulty">${['', 'molto facile', 'facile', 'media', 'difficile'].map((d) => `<option value="${d}" ${d === r.difficulty ? 'selected' : ''}>${d || '—'}</option>`).join('')}</select></label>
           <label class="field"><span>Categoria</span><input type="text" name="category" list="cats" value="${esc(r.category)}"><datalist id="cats">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist></label>
           <label class="field"><span>Cucina</span><input type="text" name="cuisine" value="${esc(r.cuisine)}" placeholder="Italiana, romana…"></label>
-          <label class="field"><span>Calorie (kcal/porz.)</span><input type="number" name="calories" min="0" value="${esc(r.calories ?? '')}"></label>
+          <label class="field"><span>Calorie (kcal/porz.)</span><input type="number" name="calories" min="0" value="${esc(r.calories ?? '')}" placeholder="automatico">
+            <small class="kcal-hint" id="kcal-hint"></small></label>
         </div>
         <label class="field"><span>Tag (separati da virgola)</span><input type="text" name="tags" value="${esc((r.tags || []).join(', '))}" placeholder="veloce, vegetariana, estate"></label>
       </div>
@@ -413,6 +434,18 @@ export function editView(el, id) {
     return other;
   };
   form.title.addEventListener('input', debounce(checkTitle, 150));
+
+  // Stima delle calorie mentre si scrivono ingredienti e porzioni
+  const kcalHint = el.querySelector('#kcal-hint');
+  const updateKcal = () => {
+    const e = estimateKcal({ ingredients: form.ingredients.value.split('\n').map((l) => l.trim()).filter(Boolean), servings: +form.servings.value || 4 });
+    if (!e.perServing) { kcalHint.innerHTML = ''; return; }
+    kcalHint.innerHTML = `Stima: <b>≈ ${e.perServing}</b>${e.coverage < 1 ? ` <span title="${esc(e.unknown.join('\n'))}">(${Math.round(e.coverage * 100)}% ingredienti)</span>` : ''} · <button type="button" class="linklike" data-usekcal="${e.perServing}">usa</button>`;
+  };
+  form.ingredients.addEventListener('input', debounce(updateKcal, 300));
+  form.servings.addEventListener('input', debounce(updateKcal, 300));
+  kcalHint.addEventListener('click', (e) => { const b = e.target.closest('[data-usekcal]'); if (b) { e.preventDefault(); form.calories.value = b.dataset.usekcal; } });
+  updateKcal();
   dupBox.addEventListener('click', (e) => {
     if (!e.target.closest('[data-suggest]')) return;
     form.title.value = e.target.closest('[data-suggest]').textContent;
